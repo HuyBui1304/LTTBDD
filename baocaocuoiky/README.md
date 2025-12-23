@@ -1,398 +1,385 @@
-# 🎓 App Điểm danh QR - HOÀN CHỈNH 4 MỨC
+# 📱 Hệ thống Quản lý Điểm danh QR Code
 
-Ứng dụng quản lý điểm danh sinh viên sử dụng Flutter và SQLite - Đã hoàn thành đầy đủ từ Mức Dễ đến Mức Khó!
+[![Flutter](https://img.shields.io/badge/Flutter-3.10+-02569B?logo=flutter)](https://flutter.dev/)
+[![Dart](https://img.shields.io/badge/Dart-3.10+-0175C2?logo=dart)](https://dart.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Web-blue)](https://flutter.dev/)
 
-## 🏆 Tổng quan tiến độ
+> Ứng dụng quản lý điểm danh sinh viên hiện đại sử dụng công nghệ QR Code, được xây dựng với Flutter và SQLite. Hỗ trợ đầy đủ các tính năng từ quản lý cơ bản đến báo cáo thống kê nâng cao.
 
-| Mức độ | Trạng thái | Tính năng chính |
-|--------|-----------|----------------|
-| **Mức Dễ** | ✅ 100% | UI/UX, CRUD, SQLite, Search/Filter, Unit Tests |
-| **Mức Trung bình** | ✅ 100% | Auth, Roles, QR, Charts, Export, Sync, Pagination |
-| **Mức Khá** | ✅ 100% | Workflow, History, Reports, Widget Tests, Docs |
-| **Mức Khó** | ✅ 100% | Advanced Roles, Dark Mode, QR Security, Integration Tests |
+## 📋 Mục lục
 
----
+- [Tổng quan](#-tổng-quan)
+- [Tính năng chính](#-tính-năng-chính)
+- [Yêu cầu hệ thống](#-yêu-cầu-hệ-thống)
+- [Cài đặt](#-cài-đặt)
+- [Sử dụng](#-sử-dụng)
+- [Cấu trúc dự án](#-cấu-trúc-dự-án)
+- [Công nghệ sử dụng](#-công-nghệ-sử-dụng)
+- [Kiểm thử](#-kiểm-thử)
+- [Tài liệu](#-tài-liệu)
+- [Đóng góp](#-đóng-góp)
+- [Giấy phép](#-giấy-phép)
 
-## 📋 Chi tiết từng mức
+## 🎯 Tổng quan
 
-### ✅ MỨC DỄ (100%)
-- [x] Giao diện hiện đại Material Design 3
-- [x] CRUD đầy đủ: Student, Session, Attendance
-- [x] SQLite offline storage
-- [x] Search/Filter/Sort
-- [x] 44 Unit tests
-- [x] State management (Loading, Empty, Error)
+Hệ thống Quản lý Điểm danh QR Code là một ứng dụng di động đa nền tảng được phát triển để số hóa quy trình điểm danh trong môi trường giáo dục. Ứng dụng cho phép giáo viên tạo mã QR cho từng buổi học, sinh viên quét mã để điểm danh tự động, và quản trị viên theo dõi, phân tích dữ liệu điểm danh một cách hiệu quả.
 
-### ✅ MỨC TRUNG BÌNH (100%)
-- [x] Authentication (Email/Password, Mock Google)
-- [x] Authorization (User/Admin roles)
-- [x] JSON Export/Import (Cloud sync simulation)
-- [x] QR Generation & Scanning
-- [x] QR Scan History
-- [x] Charts & Statistics (fl_chart)
-- [x] CSV & PDF Export
-- [x] Advanced Search & Filters
-- [x] Infinite Scroll (Pagination)
+### ✨ Điểm nổi bật
 
-### ✅ MỨC KHÁ (100%)
-- [x] Session Workflow (Draft → Pending → Approved → Ongoing → Completed)
-- [x] Session History (Audit log)
-- [x] Time-based Reports (Daily/Weekly/Monthly)
-- [x] 15 Widget Tests
-- [x] Conflict Resolution (Sync conflicts)
-- [x] Comprehensive Documentation
+- 🎨 **Giao diện hiện đại**: Material Design 3 với hỗ trợ Dark Mode
+- 🔐 **Bảo mật cao**: Token-based QR với thời gian hết hạn và sử dụng một lần
+- 📊 **Báo cáo đầy đủ**: Thống kê, biểu đồ và xuất dữ liệu CSV/PDF
+- 📱 **Đa nền tảng**: Android, iOS, Web, Windows, macOS, Linux
+- 🔄 **Hoạt động offline**: Lưu trữ dữ liệu cục bộ với SQLite
+- ♿ **Tiếp cận**: Hỗ trợ đầy đủ accessibility features
 
-### ✅ MỨC KHÓ (100%)
-- [x] **Advanced Roles**: 5 roles (Admin, Creator, Approver, Viewer, User)
-- [x] **Dark Mode**: Light/Dark/System với toggle
-- [x] **QR Anti-Abuse**: Token-based, expiry, one-time use, audit log
-- [x] **Export History**: Lưu lịch sử xuất với filters
-- [x] **Integration Tests**: 3 E2E flows
-- [x] **Tablet Support**: Responsive layout (600px, 1200px breakpoints)
-- [x] **Accessibility**: Touch targets, Semantics, Contrast, Screen reader support
+## 🚀 Tính năng chính
 
----
+### 👥 Quản lý người dùng
+- ✅ Đăng nhập/Đăng ký với xác thực email
+- ✅ Phân quyền 5 cấp độ: Admin, Creator, Approver, Viewer, User
+- ✅ Quản lý mật khẩu với mã hóa SHA-256
+- ✅ Quên mật khẩu và khôi phục tài khoản
 
-## 🚀 Cài đặt nhanh
+### 🎓 Quản lý học tập
+- ✅ Quản lý sinh viên (CRUD đầy đủ)
+- ✅ Quản lý môn học và lớp học
+- ✅ Quản lý buổi học với trạng thái: Chưa diễn ra / Đã hoàn thành
+- ✅ Điểm danh tự động qua QR Code
+- ✅ Điểm danh thủ công bởi giáo viên
+- ✅ Nhập mã 4 số thay thế quét QR
+
+### 📱 QR Code
+- ✅ Tạo mã QR động với token bảo mật
+- ✅ Mã 4 số thay thế (60 giây hết hạn)
+- ✅ Quét QR để điểm danh tự động
+- ✅ Lịch sử quét QR theo người dùng
+- ✅ Bảo mật: Token hết hạn, sử dụng một lần, audit log
+
+### 📊 Báo cáo & Thống kê
+- ✅ Thống kê điểm danh theo thời gian thực
+- ✅ Biểu đồ trực quan với fl_chart
+- ✅ Báo cáo theo ngày/tuần/tháng
+- ✅ Xuất dữ liệu CSV và PDF
+- ✅ Lịch sử xuất dữ liệu với bộ lọc
+
+### 🔄 Đồng bộ & Sao lưu
+- ✅ Xuất/Nhập dữ liệu JSON
+- ✅ Phát hiện và xử lý xung đột dữ liệu
+- ✅ Hỗ trợ đồng bộ đa thiết bị (simulation)
+
+### 🎨 Trải nghiệm người dùng
+- ✅ Dark Mode (Light/Dark/System)
+- ✅ Responsive layout (Mobile/Tablet/Desktop)
+- ✅ Tìm kiếm và lọc nâng cao
+- ✅ Sắp xếp dữ liệu linh hoạt
+- ✅ Pagination cho danh sách dài
+- ✅ Loading states và error handling
+
+## 💻 Yêu cầu hệ thống
+
+### Yêu cầu phát triển
+- **Flutter SDK**: >= 3.10.1
+- **Dart**: >= 3.10.1
+- **Android Studio** / **VS Code** với Flutter extension
+- **Git**
+
+### Yêu cầu thiết bị
+- **Android**: minSdkVersion 21 (Android 5.0+)
+- **iOS**: 12.0+
+- **Web**: Chrome, Firefox, Safari, Edge (phiên bản mới nhất)
+- **Desktop**: Windows 10+, macOS 10.14+, Linux (Ubuntu 18.04+)
+
+## 📦 Cài đặt
+
+### 1. Clone repository
 
 ```bash
-# 1. Clone project
-git clone <repo-url>
+git clone <repository-url>
 cd baocaocuoiky
+```
 
-# 2. Install dependencies
+### 2. Cài đặt dependencies
+
+```bash
 flutter pub get
+```
 
-# 3. Run app
+### 3. Chạy ứng dụng
+
+```bash
+# Chạy trên thiết bị mặc định
 flutter run
 
-# 4. Run unit tests
-flutter test
+# Chạy trên Android
+flutter run -d android
 
-# 5. Run integration tests
-flutter test integration_test/app_flow_test.dart
+# Chạy trên iOS
+flutter run -d ios
+
+# Chạy trên Web
+flutter run -d chrome
 ```
 
----
+### 4. Build ứng dụng
 
-## 🔐 Demo Accounts
+```bash
+# Build APK cho Android
+flutter build apk --release
 
+# Build App Bundle cho Android
+flutter build appbundle --release
+
+# Build IPA cho iOS
+flutter build ios --release
+
+# Build Web
+flutter build web --release
 ```
-📧 Admin: admin@gmail.com
-🔑 Pass:  123
 
-📧 User:  user@gmail.com
-🔑 Pass:  123
-```
+## 🔐 Tài khoản demo
 
----
+Ứng dụng đi kèm với dữ liệu demo sẵn có. Bạn có thể sử dụng các tài khoản sau để đăng nhập:
 
-## 📦 Tech Stack
+| Vai trò | Email | Mật khẩu | Quyền hạn |
+|---------|-------|----------|-----------|
+| **Admin** | `admin@gmail.com` | `123` | Toàn quyền quản lý hệ thống |
+| **Teacher** | `teacher1@gmail.com` | `123` | Quản lý lớp học và điểm danh |
+| **Student** | `student1@gmail.com` | `123` | Xem lịch học và điểm danh |
 
-| Category | Technology |
-|----------|-----------|
-| **Framework** | Flutter 3.10+ |
-| **Database** | SQLite (sqflite) |
-| **State Management** | Provider |
-| **Auth** | Local (SQLite + crypto) |
-| **QR** | mobile_scanner, qr_flutter |
-| **Charts** | fl_chart |
-| **Export** | csv, pdf, printing |
-| **Testing** | flutter_test, integration_test |
+> ⚠️ **Lưu ý**: Đây là tài khoản demo chỉ dùng cho mục đích phát triển và kiểm thử.
 
----
+## 📖 Sử dụng
 
-## 📁 Cấu trúc Project
+### Cho Giáo viên
+
+1. **Đăng nhập** với tài khoản giáo viên
+2. **Chọn môn học** từ danh sách môn học
+3. **Chọn buổi học** cần điểm danh
+4. **Tạo mã QR** hoặc **Điểm danh thủ công**
+5. **Xem danh sách điểm danh** và **Xuất báo cáo**
+
+### Cho Sinh viên
+
+1. **Đăng nhập** với tài khoản sinh viên
+2. **Xem lịch học** của các lớp đã đăng ký
+3. **Quét QR Code** hoặc **Nhập mã 4 số** để điểm danh
+4. **Xem lịch sử điểm danh** của bản thân
+
+### Cho Quản trị viên
+
+1. **Đăng nhập** với tài khoản admin
+2. **Quản lý người dùng** (thêm, sửa, xóa)
+3. **Quản lý sinh viên và môn học**
+4. **Xem thống kê tổng quan** và **Xuất báo cáo**
+
+## 📁 Cấu trúc dự án
 
 ```
 baocaocuoiky/
 ├── lib/
-│   ├── main.dart
-│   ├── models/                    # 7 models
-│   │   ├── student.dart
-│   │   ├── attendance_session.dart
-│   │   ├── attendance_record.dart
+│   ├── main.dart                    # Entry point
+│   ├── models/                      # Data models
 │   │   ├── app_user.dart
-│   │   ├── qr_scan_history.dart
+│   │   ├── attendance_record.dart
+│   │   ├── attendance_session.dart
+│   │   ├── export_history.dart
+│   │   ├── qr_token.dart
 │   │   ├── session_history.dart
-│   │   ├── qr_token.dart          # NEW (Khó)
-│   │   └── export_history.dart    # NEW (Khó)
+│   │   ├── student.dart
+│   │   └── subject.dart
 │   ├── database/
-│   │   └── database_helper.dart   # v5 (5 upgrades)
-│   ├── providers/                 # 2 providers
+│   │   └── database_helper.dart     # SQLite database operations
+│   ├── providers/                   # State management
 │   │   ├── auth_provider.dart
-│   │   └── theme_provider.dart    # NEW (Khó)
-│   ├── services/                  # 6 services
-│   │   ├── local_auth_service.dart
-│   │   ├── qr_service.dart
-│   │   ├── export_service.dart
-│   │   ├── sync_service.dart
-│   │   ├── permission_service.dart # NEW (Khó)
-│   │   └── qr_token_service.dart   # NEW (Khó)
-│   ├── screens/                    # 15 screens
+│   │   └── theme_provider.dart
+│   ├── screens/                     # UI screens
 │   │   ├── home_screen.dart
 │   │   ├── login_screen.dart
-│   │   ├── register_screen.dart
-│   │   ├── forgot_password_screen.dart
 │   │   ├── students_screen.dart
-│   │   ├── student_detail_screen.dart
-│   │   ├── sessions_screen.dart
-│   │   ├── session_detail_screen.dart
+│   │   ├── subjects_screen.dart
 │   │   ├── qr_display_screen.dart
 │   │   ├── qr_scanner_screen.dart
-│   │   ├── qr_history_screen.dart
+│   │   ├── manual_attendance_screen.dart
 │   │   ├── statistics_screen.dart
 │   │   ├── export_screen.dart
-│   │   ├── session_workflow_screen.dart
-│   │   ├── time_based_report_screen.dart
-│   │   ├── conflict_resolution_screen.dart
-│   │   └── export_history_screen.dart  # NEW (Khó)
-│   ├── widgets/                    # Reusable widgets
-│   │   ├── state_widgets.dart
-│   │   └── custom_text_field.dart
-│   └── utils/                      # 4 utilities
-│       ├── validators.dart
-│       ├── responsive.dart         # NEW (Khó)
-│       └── accessibility.dart      # NEW (Khó)
-├── test/                           # 44 unit + 15 widget tests
+│   │   └── ...
+│   ├── services/                    # Business logic
+│   │   ├── local_auth_service.dart
+│   │   ├── qr_service.dart
+│   │   ├── qr_token_service.dart
+│   │   ├── export_service.dart
+│   │   ├── sync_service.dart
+│   │   └── ...
+│   ├── utils/                       # Utilities
+│   │   ├── validators.dart
+│   │   ├── responsive.dart
+│   │   └── accessibility.dart
+│   └── widgets/                     # Reusable widgets
+│       ├── custom_text_field.dart
+│       └── state_widgets.dart
+├── test/                            # Unit & Widget tests
 │   ├── models/
 │   ├── utils/
 │   └── widgets/
-├── integration_test/               # NEW (Khó)
-│   └── app_flow_test.dart         # 3 E2E flows
-├── README.md                       # This file
-├── MUC_DE.md                       # Dễ summary
-├── MUC_TRUNG_BINH.md              # Trung bình summary
-├── MUC_KHA.md                      # Khá summary
-├── MUC_KHO.md                      # Khó summary
-├── DOCUMENTATION.md                # Full docs
-└── DEMO_GUIDE.md                   # Demo video guide
+├── integration_test/                # Integration tests
+│   └── app_flow_test.dart
+├── android/                         # Android configuration
+├── ios/                             # iOS configuration
+├── web/                             # Web configuration
+├── windows/                         # Windows configuration
+├── macos/                           # macOS configuration
+├── linux/                           # Linux configuration
+├── pubspec.yaml                     # Dependencies
+└── README.md                        # This file
 ```
 
----
+## 🛠 Công nghệ sử dụng
 
-## 🎨 Screenshots (Tính năng nổi bật)
+### Framework & Language
+- **Flutter** 3.10+ - Cross-platform framework
+- **Dart** 3.10+ - Programming language
 
-### 1. **Dark Mode Toggle**
-- Light/Dark/System
-- Lưu preference
-- Material 3 adaptive colors
+### State Management
+- **Provider** 6.1.1 - State management solution
 
-### 2. **QR Token Security**
-- Mỗi QR có token duy nhất
-- Hết hạn sau 30 phút
-- Chỉ dùng 1 lần
-- Audit log đầy đủ
+### Database
+- **sqflite** 2.3.0 - SQLite database for Flutter
+- **path** 1.8.3 - Path manipulation utilities
 
-### 3. **Export History**
-- Lưu lịch sử mọi lần xuất
-- Filter by format (CSV/PDF)
-- Admin xem toàn bộ, User chỉ xem của mình
+### Authentication & Security
+- **crypto** 3.0.3 - Cryptographic functions
+- **shared_preferences** 2.2.2 - Local storage
 
-### 4. **Responsive Layout**
-- Mobile: 1-2 columns
-- Tablet: 2-3 columns
-- Desktop: 3+ columns
+### QR Code
+- **mobile_scanner** 4.0.1 - QR code scanner
+- **qr_flutter** 4.1.0 - QR code generator
+- **permission_handler** 11.2.0 - Permission management
 
-### 5. **Advanced Permissions**
-```
-Admin     → Toàn quyền
-Creator   → Tạo & quản lý buổi học của mình
-Approver  → Duyệt buổi học
-Viewer    → Chỉ xem
-User      → Người dùng thường
-```
+### Data Visualization
+- **fl_chart** 0.66.0 - Beautiful charts and graphs
 
----
+### Export & Printing
+- **csv** 6.0.0 - CSV file generation
+- **pdf** 3.10.7 - PDF document generation
+- **printing** 5.12.0 - Print documents
+- **path_provider** 2.1.2 - File system paths
 
-## 📊 Database Schema (Version 5)
+### UI & UX
+- **cached_network_image** 3.3.1 - Image caching
+- **shimmer** 3.0.0 - Loading shimmer effect
+- **intl** 0.19.0 - Internationalization and date formatting
 
-### Core Tables (Mức Dễ)
-- `students`
-- `attendance_sessions`
-- `attendance_records`
+### Testing
+- **flutter_test** - Unit and widget testing
+- **integration_test** - Integration testing
 
-### Auth & History (Mức Trung bình)
-- `users`
-- `qr_scan_history`
+## 🧪 Kiểm thử
 
-### Workflow (Mức Khá)
-- `session_history`
-
-### Security & Audit (Mức Khó)
-- `qr_tokens`
-- `export_history`
-
-**Total: 8 tables**
-
----
-
-## 🧪 Testing
+Dự án bao gồm đầy đủ các loại kiểm thử:
 
 ### Unit Tests (44 tests)
+Kiểm thử các models, utilities và business logic:
+
 ```bash
 flutter test
 ```
 
 ### Widget Tests (15 tests)
+Kiểm thử các widget và UI components:
+
 ```bash
 flutter test test/widgets/
 ```
 
 ### Integration Tests (3 flows)
+Kiểm thử end-to-end các luồng chính:
+
 ```bash
 flutter test integration_test/app_flow_test.dart
 ```
 
-**Total: 62 tests** ✅
+**Tổng cộng: 62 tests** ✅
 
----
+### Test Coverage
 
-## 📚 Documentation
+Để xem coverage report:
 
-Chi tiết từng mức:
-- [MUC_DE.md](MUC_DE.md) - Mức Dễ
-- [MUC_TRUNG_BINH.md](MUC_TRUNG_BINH.md) - Mức Trung bình
-- [MUC_KHA.md](MUC_KHA.md) - Mức Khá
-- [MUC_KHO.md](MUC_KHO.md) - Mức Khó
-- [DOCUMENTATION.md](DOCUMENTATION.md) - Technical docs
-- [DEMO_GUIDE.md](DEMO_GUIDE.md) - Demo video guide
-
----
-
-## 🎯 Key Features Checklist
-
-### Quản lý cơ bản
-- [x] CRUD Students
-- [x] CRUD Sessions
-- [x] Attendance marking
-- [x] Search/Filter/Sort
-- [x] Offline support (SQLite)
-
-### Xác thực & Phân quyền
-- [x] Login/Register
-- [x] Password hashing (crypto)
-- [x] 5 vai trò: Admin, Creator, Approver, Viewer, User
-- [x] Role-based UI/permissions
-
-### QR Code
-- [x] Generate QR for sessions
-- [x] Scan QR to mark attendance
-- [x] QR history per user
-- [x] QR token security (expiry, one-time)
-- [x] QR audit log
-
-### Báo cáo & Xuất dữ liệu
-- [x] Statistics with charts
-- [x] CSV export (Students, Sessions, Attendance)
-- [x] PDF export (Reports)
-- [x] Time-based reports (Daily/Weekly/Monthly)
-- [x] Export history with filters
-
-### Workflow & History
-- [x] Session workflow (Draft → Approved → Completed)
-- [x] Session history (Audit trail)
-- [x] Approval process
-
-### Đồng bộ & Xung đột
-- [x] JSON export/import (Cloud simulation)
-- [x] Conflict detection
-- [x] Conflict resolution UI
-
-### UX & Accessibility
-- [x] Dark mode (Light/Dark/System)
-- [x] Responsive layout (Mobile/Tablet/Desktop)
-- [x] Touch target 48x48
-- [x] Semantic labels
-- [x] Text scaling (0.8-2.0x)
-- [x] High contrast
-
-### Testing
-- [x] 44 Unit tests
-- [x] 15 Widget tests
-- [x] 3 Integration tests (E2E)
-
----
-
-## 🔥 Tính năng vượt yêu cầu
-
-| Yêu cầu gốc | Thực tế | Tăng |
-|-------------|---------|------|
-| 3 unit tests | 44 tests | +1367% |
-| 5 widget tests (Khá) | 15 tests | +200% |
-| 3 integration tests (Khó) | 3 flows | ✅ |
-| 2 roles | 5 roles | +150% |
-| Dark mode | Dark + System | +50% |
-
----
-
-## 🚀 Quick Start Guide
-
-### 1. Cài đặt
 ```bash
-flutter pub get
+flutter test --coverage
+genhtml coverage/lcov.info -o coverage/html
 ```
 
-### 2. Chạy app
-```bash
-flutter run
-```
+## 📚 Tài liệu
 
-### 3. Đăng nhập
-```
-Email: admin@gmail.com
-Pass: 123
-```
+Dự án đi kèm với tài liệu chi tiết:
 
-### 4. Test các tính năng
-- ✅ Tạo sinh viên
-- ✅ Tạo buổi học
-- ✅ Tạo QR
-- ✅ Quét QR
-- ✅ Xem thống kê
-- ✅ Xuất CSV/PDF
-- ✅ Toggle Dark Mode
-- ✅ Xem lịch sử
+- **[DOCUMENTATION.md](DOCUMENTATION.md)** - Tài liệu kỹ thuật đầy đủ
+- **[DEMO_GUIDE.md](DEMO_GUIDE.md)** - Hướng dẫn demo và video
+- **[MUC_KHO.md](MUC_KHO.md)** - Tài liệu các tính năng nâng cao
 
----
+## 🗄 Database Schema
 
-## 📱 Requirements
+Hệ thống sử dụng SQLite với 8 bảng chính:
 
-- Flutter SDK: >= 3.10.1
-- Dart: >= 3.10.1
-- Android: minSdkVersion 21
-- iOS: 12.0+
+| Bảng | Mô tả |
+|------|-------|
+| `users` | Thông tin người dùng và phân quyền |
+| `students` | Thông tin sinh viên |
+| `subjects` | Thông tin môn học |
+| `attendance_sessions` | Thông tin buổi học |
+| `attendance_records` | Bản ghi điểm danh |
+| `qr_tokens` | Token QR Code bảo mật |
+| `session_history` | Lịch sử thay đổi buổi học |
+| `export_history` | Lịch sử xuất dữ liệu |
 
----
+**Database Version**: 9
 
-## 👨‍💻 Author
+## 🎨 Screenshots
+
+> 📸 Screenshots sẽ được thêm vào sau
+
+## 🤝 Đóng góp
+
+Chúng tôi hoan nghênh mọi đóng góp! Vui lòng làm theo các bước sau:
+
+1. **Fork** repository
+2. **Tạo branch** cho tính năng mới (`git checkout -b feature/AmazingFeature`)
+3. **Commit** các thay đổi (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** lên branch (`git push origin feature/AmazingFeature`)
+5. **Mở Pull Request**
+
+### Quy tắc đóng góp
+
+- Tuân thủ code style hiện tại
+- Viết tests cho các tính năng mới
+- Cập nhật tài liệu khi cần thiết
+- Đảm bảo tất cả tests đều pass
+
+## 📄 Giấy phép
+
+Dự án này được phân phối dưới giấy phép MIT. Xem file [LICENSE](LICENSE) để biết thêm chi tiết.
+
+## 👨‍💻 Tác giả
 
 **Báo cáo cuối kỳ - Lập trình thiết bị di động**
 
 ---
 
-## 📄 License
+## 📞 Liên hệ
 
-MIT License
+Nếu bạn có bất kỳ câu hỏi hoặc đề xuất nào, vui lòng:
+
+- Mở một [Issue](https://github.com/your-repo/issues)
+- Tạo một [Pull Request](https://github.com/your-repo/pulls)
 
 ---
 
-## 🎉 Kết luận
+<div align="center">
 
-**✅ ĐÃ HOÀN THÀNH 100% TẤT CẢ 4 MỨC:**
+**⭐ Nếu dự án này hữu ích, hãy cho chúng tôi một star! ⭐**
 
-1. ✅ **Mức Dễ**: Nền tảng vững chắc
-2. ✅ **Mức Trung bình**: Tính năng đầy đủ
-3. ✅ **Mức Khá**: Quy trình nghiệp vụ
-4. ✅ **Mức Khó**: Production-ready
+Made with ❤️ using Flutter
 
-**Tổng cộng:**
-- 📁 **65+ files**
-- 💻 **~15,000 lines of code**
-- 🧪 **62 tests**
-- 📚 **5 documentation files**
-- 🎨 **8 database tables**
-- 🔐 **5 user roles**
-- 📊 **15 screens**
-
-**App sẵn sàng cho production!** 🚀🎓
+</div>
