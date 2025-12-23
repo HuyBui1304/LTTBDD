@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final sessions = await _db.getSessionsByCreator(userId);
         final students = await _db.getAllStudents(); // Teachers can see all students
 
-                                        setState(() {
+        setState(() {
           _totalStudents = students.length;
           _totalSessions = sessions.length;
           _isLoading = false;
@@ -727,14 +727,14 @@ class _StatCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               if (value.isNotEmpty) ...[
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                ),
-                const SizedBox(height: 4),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+              ),
+              const SizedBox(height: 4),
               ],
               Text(
                 title,

@@ -363,7 +363,9 @@ Dự án này được phân phối dưới giấy phép MIT. Xem file [LICENSE]
 
 ## 👨‍💻 Tác giả
 
-**Báo cáo cuối kỳ - Lập trình thiết bị di động**
+**HuyBui** - huybm.ds@gmail.com
+
+*Báo cáo cuối kỳ - Lập trình thiết bị di động*
 
 ---
 
@@ -371,8 +373,8 @@ Dự án này được phân phối dưới giấy phép MIT. Xem file [LICENSE]
 
 Nếu bạn có bất kỳ câu hỏi hoặc đề xuất nào, vui lòng:
 
-- Mở một [Issue](https://github.com/your-repo/issues)
-- Tạo một [Pull Request](https://github.com/your-repo/pulls)
+- **Email**: huybm.ds@gmail.com
+- **Tác giả**: HuyBui
 
 ---
 

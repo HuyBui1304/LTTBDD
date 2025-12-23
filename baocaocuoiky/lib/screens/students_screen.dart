@@ -81,7 +81,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
 
     // Sort by subject name
     filtered.sort((a, b) => a.subjectName.compareTo(b.subjectName));
-
+    
     setState(() {
       _filteredSubjects = filtered;
     });
@@ -113,10 +113,10 @@ class _StudentsScreenState extends State<StudentsScreen> {
               },
               onClear: () {
                 setState(() => _searchQuery = '');
-                _applyFilters();
-              },
+                  _applyFilters();
+                },
+              ),
             ),
-          ),
           Expanded(
             child: _isLoading
                 ? const custom.LoadingWidget(message: 'Đang tải danh sách môn học...')
@@ -132,12 +132,12 @@ class _StudentsScreenState extends State<StudentsScreen> {
                       )
                     : RefreshIndicator(
                         onRefresh: _loadSubjects,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16),
                           itemCount: _filteredSubjects.length,
-                          itemBuilder: (context, index) {
+                            itemBuilder: (context, index) {
                             final subject = _filteredSubjects[index];
-                            return Card(
+                              return Card(
                               margin: const EdgeInsets.only(bottom: 12),
                               elevation: 2,
                               child: ListTile(
@@ -158,12 +158,12 @@ class _StudentsScreenState extends State<StudentsScreen> {
                                 ),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+                                        children: [
                                     const SizedBox(height: 4),
                                     Text('Mã môn: ${subject.subjectCode}'),
                                     Text('Lớp: ${subject.classCode}'),
-                                  ],
-                                ),
+                                        ],
+                                      ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
                                   Navigator.push(

@@ -565,14 +565,14 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                   else
                     Column(
                       children: [
-                        Text(
+                    Text(
                           'Quét mã QR hoặc nhập mã 4 số',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
                           onPressed: () {
@@ -656,9 +656,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                       ],
                     ),
                   ),
-                ),
               ),
             ),
+          ),
         ],
       ),
     );

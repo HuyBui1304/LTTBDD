@@ -793,14 +793,14 @@ class DatabaseHelper {
     } catch (e) {
       // Fallback: query without join if column doesn't exist
       try {
-        final result = await db.rawQuery('''
-          SELECT ar.*, s.name as studentName, s.studentId as studentCode
-          FROM attendance_records ar
-          INNER JOIN students s ON ar.studentId = s.id
-          WHERE ar.sessionId = ?
-          ORDER BY s.name ASC
-        ''', [sessionId]);
-        return result.map((json) => AttendanceRecord.fromMap(json)).toList();
+    final result = await db.rawQuery('''
+      SELECT ar.*, s.name as studentName, s.studentId as studentCode
+      FROM attendance_records ar
+      INNER JOIN students s ON ar.studentId = s.id
+      WHERE ar.sessionId = ?
+      ORDER BY s.name ASC
+    ''', [sessionId]);
+    return result.map((json) => AttendanceRecord.fromMap(json)).toList();
       } catch (e2) {
         // Last fallback: simple query
         final result = await db.query(
@@ -1156,7 +1156,7 @@ class DatabaseHelper {
       'role': 'admin',
       'createdAt': now,
     });
-    
+
     // Admin 2
     await db.insert('users', {
       'uid': 'admin-002',
@@ -1176,7 +1176,7 @@ class DatabaseHelper {
       'role': 'teacher',
       'createdAt': now,
     });
-    
+
     final teacher2Id = await db.insert('users', {
       'uid': 'teacher-002',
       'email': 'teacher2@gmail.com',
@@ -1213,7 +1213,7 @@ class DatabaseHelper {
       'role': 'student',
       'createdAt': now,
     });
-    
+
     await db.insert('users', {
       'uid': 'student-003',
       'email': 'student3@gmail.com',
@@ -1338,7 +1338,7 @@ class DatabaseHelper {
       'createdAt': now,
       'updatedAt': now,
     });
-    
+
     final student4Id = await db.insert('students', {
       'studentId': 'SV004',
       'name': 'Phạm Thị D',
@@ -1348,7 +1348,7 @@ class DatabaseHelper {
       'createdAt': now,
       'updatedAt': now,
     });
-    
+
     // Lớp 2: WEB2024
     final student5Id = await db.insert('students', {
       'studentId': 'SV005',
@@ -1359,7 +1359,7 @@ class DatabaseHelper {
       'createdAt': now,
       'updatedAt': now,
     });
-    
+
     final student6Id = await db.insert('students', {
       'studentId': 'SV006',
       'name': 'Vũ Thị F',
@@ -1699,9 +1699,9 @@ class DatabaseHelper {
     if (session1Id != null && session2Id != null) {
       // Session 1 - Buổi đã hoàn thành, đã điểm danh (LTTBDD2024)
       // Student 1-4 trong lớp LTTBDD2024
-      await db.insert('attendance_records', {
-        'sessionId': session1Id,
-        'studentId': student1Id,
+    await db.insert('attendance_records', {
+      'sessionId': session1Id,
+      'studentId': student1Id,
       'status': 'present',
       'checkInTime': DateTime.now().subtract(const Duration(days: 2, hours: -2)).toIso8601String(),
       'note': 'Điểm danh đầy đủ',
@@ -1758,7 +1758,7 @@ class DatabaseHelper {
       'note': 'Vắng không lý do',
       'createdAt': now,
       'updatedAt': now,
-      });
+    });
     }
 
     _hasSeeded = true;
