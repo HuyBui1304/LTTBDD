@@ -55,12 +55,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
         MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
     } else if (mounted && authProvider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.error!),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      final error = authProvider.error!;
+      final isRateLimit = error.contains('blocked') || 
+                         error.contains('unusual activity') ||
+                         error.contains('chặn');
+      
+      // Hiển thị dialog cho lỗi rate limiting (quan trọng)
+      if (isRateLimit) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Firebase đã chặn thiết bị'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Thiết bị này đã bị Firebase tạm thời chặn do tạo quá nhiều tài khoản trong thời gian ngắn.',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Giải pháp:'),
+                  const SizedBox(height: 8),
+                  const Text('1. Đợi 15-30 phút rồi thử lại'),
+                  const SizedBox(height: 8),
+                  const Text('2. Tạo tài khoản qua Firebase Console:'),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    'https://console.firebase.google.com',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('3. Hoặc dùng tài khoản đã có để đăng nhập'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Đã hiểu'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // Hiển thị SnackBar cho lỗi thông thường
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       authProvider.clearError();
     }
   }

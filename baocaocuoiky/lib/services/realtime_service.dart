@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../database/firebase_database_service.dart';
 import '../models/attendance_session.dart';
 
 class RealtimeNotificationService {
   static final RealtimeNotificationService instance = RealtimeNotificationService._init();
   final FirebaseDatabaseService _db = FirebaseDatabaseService.instance;
-  final DatabaseReference _sessionsRef = FirebaseDatabase.instance.ref('attendance_sessions');
+  final CollectionReference _sessionsRef = FirebaseFirestore.instance.collection('attendance_sessions');
   
-  StreamSubscription<DatabaseEvent>? _sessionsSubscription;
+  StreamSubscription<QuerySnapshot>? _sessionsSubscription;
   Timer? _timer;
   final StreamController<SessionStatusUpdate> _statusController = StreamController.broadcast();
   
@@ -17,18 +17,18 @@ class RealtimeNotificationService {
 
   Stream<SessionStatusUpdate> get statusStream => _statusController.stream;
 
-  // Start monitoring session status changes using Firebase Realtime Database listeners
+  // Start monitoring session status changes using Firestore listeners
   void startMonitoring() {
     _sessionsSubscription?.cancel();
     
     try {
       // Listen to all session changes with error handling
-      _sessionsSubscription = _sessionsRef.onValue.listen(
-        (event) {
-          _processSessionUpdates(event.snapshot);
+      _sessionsSubscription = _sessionsRef.snapshots().listen(
+        (snapshot) {
+          _processSessionUpdates(snapshot);
         },
         onError: (error) {
-          debugPrint('Error in Firebase Realtime Database listener: $error');
+          debugPrint('Error in Firestore listener: $error');
           // Try to reconnect after a delay
           Future.delayed(const Duration(seconds: 5), () {
             if (_sessionsSubscription == null) {
@@ -54,28 +54,25 @@ class RealtimeNotificationService {
     _timer = null;
   }
 
-  void _processSessionUpdates(DataSnapshot snapshot) {
+  void _processSessionUpdates(QuerySnapshot snapshot) {
     try {
-      if (!snapshot.exists) return;
+      if (snapshot.docs.isEmpty) return;
       
-      if (snapshot.value is Map) {
-        final data = snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            final sessionMap = Map<String, dynamic>.from(value as Map);
-            final session = AttendanceSession.fromMap(sessionMap);
-            
-            // Check if session should be auto-completed
-            if (session.sessionDate != null &&
-                session.status == SessionStatus.scheduled &&
-                session.sessionDate!.isBefore(DateTime.now().subtract(const Duration(hours: 2)))) {
-              // Auto-complete in background
-              _autoCompleteSession(session);
-            }
-          } catch (e) {
-            debugPrint('Error processing session update: $e');
+      for (var doc in snapshot.docs) {
+        try {
+          final sessionMap = Map<String, dynamic>.from(doc.data() as Map);
+          final session = AttendanceSession.fromMap(sessionMap);
+          
+          // Check if session should be auto-completed
+          if (session.sessionDate != null &&
+              session.status == SessionStatus.scheduled &&
+              session.sessionDate!.isBefore(DateTime.now().subtract(const Duration(hours: 2)))) {
+            // Auto-complete in background
+            _autoCompleteSession(session);
           }
-        });
+        } catch (e) {
+          debugPrint('Error processing session update: $e');
+        }
       }
     } catch (e) {
       debugPrint('Error processing session updates: $e');
@@ -271,4 +268,3 @@ class _RealtimeNotificationListenerState extends State<RealtimeNotificationListe
     return widget.child;
   }
 }
-

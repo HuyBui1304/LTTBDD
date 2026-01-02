@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/realtime_service.dart';
+import 'services/sample_data_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -34,6 +35,23 @@ void main() async {
   } catch (e) {
     debugPrint('Date formatting initialization error: $e');
     // Continue anyway - app can work without Vietnamese date formatting
+  }
+  
+  // Initialize sample data (users and subjects)
+  // TẮT TỰ ĐỘNG TẠO USERS ĐỂ TRÁNH RATE LIMITING
+  // Để tạo users, admin có thể dùng chức năng "Tạo dữ liệu mẫu" trong Users Management Screen
+  // try {
+  //   await SampleDataService.instance.initializeAllSampleData();
+  // } catch (e) {
+  //   debugPrint('Error initializing sample data: $e');
+  //   // Continue anyway - app can work without sample data
+  // }
+  
+  // Chỉ tạo subjects nếu chưa có (không cần users)
+  try {
+    await SampleDataService.instance.initializeSampleSubjects([]);
+  } catch (e) {
+    debugPrint('Error initializing sample subjects: $e');
   }
   
   runApp(const MyApp());

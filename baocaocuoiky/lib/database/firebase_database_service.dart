@@ -1,4 +1,4 @@
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import '../models/student.dart';
 import '../models/attendance_session.dart';
@@ -17,24 +17,25 @@ class Crypto {
 
 class FirebaseDatabaseService {
   static final FirebaseDatabaseService instance = FirebaseDatabaseService._init();
-  final DatabaseReference _database = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   FirebaseDatabaseService._init();
 
-  // Helper to get reference for a path
-  DatabaseReference _ref(String path) => _database.child(path);
+  // Helper to get collection reference
+  CollectionReference _collection(String collectionName) => _firestore.collection(collectionName);
 
   // ========== STUDENT OPERATIONS ==========
 
   Future<Student> createStudent(Student student) async {
     try {
-      final studentsRef = _ref('students');
-      final newStudentRef = studentsRef.push();
-      final id = int.tryParse(newStudentRef.key ?? '0') ?? DateTime.now().millisecondsSinceEpoch;
+      final studentsRef = _collection('students');
+      final id = DateTime.now().millisecondsSinceEpoch;
       
       final studentMap = student.copyWith(id: id).toMap();
-      studentMap['id'] = id; // Ensure ID is included
-      await newStudentRef.set(studentMap);
+      studentMap['id'] = id;
+      
+      // Use id as document ID for easier querying
+      await studentsRef.doc(id.toString()).set(studentMap);
       
       return student.copyWith(id: id);
     } catch (e) {
@@ -44,11 +45,12 @@ class FirebaseDatabaseService {
 
   Future<Student?> getStudent(int id) async {
     try {
-      final snapshot = await _ref('students').orderByChild('id').equalTo(id).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return Student.fromMap(Map<String, dynamic>.from(entry.value as Map)..['id'] = entry.value['id']);
+      final doc = await _collection('students').doc(id.toString()).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          return Student.fromMap(data);
+        }
       }
       return null;
     } catch (e) {
@@ -58,20 +60,17 @@ class FirebaseDatabaseService {
 
   Future<List<Student>> getAllStudents() async {
     try {
-      final snapshot = await _ref('students').once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('students').get();
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Student> students = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            final studentMap = Map<String, dynamic>.from(value as Map);
-            students.add(Student.fromMap(studentMap));
-          } catch (e) {
-            // Skip invalid entries
-          }
-        });
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          students.add(Student.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
       }
       
       students.sort((a, b) => a.name.compareTo(b.name));
@@ -97,8 +96,20 @@ class FirebaseDatabaseService {
 
   Future<List<Student>> getStudentsByClass(String classCode) async {
     try {
-      final allStudents = await getAllStudents();
-      return allStudents.where((s) => s.classCode == classCode).toList();
+      final snapshot = await _collection('students')
+          .where('classCode', isEqualTo: classCode)
+          .get();
+      
+      final List<Student> students = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          students.add(Student.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return students;
     } catch (e) {
       return [];
     }
@@ -106,11 +117,14 @@ class FirebaseDatabaseService {
 
   Future<Student?> getStudentByStudentId(String studentId) async {
     try {
-      final snapshot = await _ref('students').orderByChild('studentId').equalTo(studentId).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return Student.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      final snapshot = await _collection('students')
+          .where('studentId', isEqualTo: studentId)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data() as Map<String, dynamic>;
+        return Student.fromMap(data);
       }
       return null;
     } catch (e) {
@@ -122,12 +136,7 @@ class FirebaseDatabaseService {
     try {
       if (student.id == null) throw 'Student ID is required';
       
-      final snapshot = await _ref('students').orderByChild('id').equalTo(student.id).once();
-      if (!snapshot.snapshot.exists) throw 'Student not found';
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('students/$key').update(student.toMap());
+      await _collection('students').doc(student.id.toString()).update(student.toMap());
       return 1;
     } catch (e) {
       throw 'Cập nhật sinh viên thất bại: $e';
@@ -136,21 +145,18 @@ class FirebaseDatabaseService {
 
   Future<int> deleteStudent(int id) async {
     try {
-      final snapshot = await _ref('students').orderByChild('id').equalTo(id).once();
-      if (!snapshot.snapshot.exists) return 0;
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('students/$key').remove();
+      await _collection('students').doc(id.toString()).delete();
       
       // Also delete related attendance records
-      final recordsSnapshot = await _ref('attendance_records').orderByChild('studentId').equalTo(id).once();
-      if (recordsSnapshot.snapshot.exists && recordsSnapshot.snapshot.value != null) {
-        final recordsData = recordsSnapshot.snapshot.value as Map;
-        for (final key in recordsData.keys) {
-          await _ref('attendance_records/$key').remove();
-        }
+      final recordsSnapshot = await _collection('attendance_records')
+          .where('studentId', isEqualTo: id)
+          .get();
+      
+      final batch = _firestore.batch();
+      for (var doc in recordsSnapshot.docs) {
+        batch.delete(doc.reference);
       }
+      await batch.commit();
       
       return 1;
     } catch (e) {
@@ -162,13 +168,13 @@ class FirebaseDatabaseService {
 
   Future<Subject> createSubject(Subject subject) async {
     try {
-      final subjectsRef = _ref('subjects');
-      final newSubjectRef = subjectsRef.push();
-      final id = int.tryParse(newSubjectRef.key ?? '0') ?? DateTime.now().millisecondsSinceEpoch;
+      final subjectsRef = _collection('subjects');
+      final id = DateTime.now().millisecondsSinceEpoch;
       
       final subjectMap = subject.copyWith(id: id).toMap();
       subjectMap['id'] = id;
-      await newSubjectRef.set(subjectMap);
+      
+      await subjectsRef.doc(id.toString()).set(subjectMap);
       
       return subject.copyWith(id: id);
     } catch (e) {
@@ -178,11 +184,12 @@ class FirebaseDatabaseService {
 
   Future<Subject?> getSubject(int id) async {
     try {
-      final snapshot = await _ref('subjects').orderByChild('id').equalTo(id).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return Subject.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      final doc = await _collection('subjects').doc(id.toString()).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          return Subject.fromMap(data);
+        }
       }
       return null;
     } catch (e) {
@@ -192,20 +199,17 @@ class FirebaseDatabaseService {
 
   Future<List<Subject>> getAllSubjects() async {
     try {
-      final snapshot = await _ref('subjects').once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('subjects').get();
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Subject> subjects = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            final subjectMap = Map<String, dynamic>.from(value as Map);
-            subjects.add(Subject.fromMap(subjectMap));
-          } catch (e) {
-            // Skip invalid entries
-          }
-        });
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          subjects.add(Subject.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
       }
       
       subjects.sort((a, b) => a.subjectName.compareTo(b.subjectName));
@@ -217,8 +221,20 @@ class FirebaseDatabaseService {
 
   Future<List<Subject>> getSubjectsByCreator(int creatorId) async {
     try {
-      final allSubjects = await getAllSubjects();
-      return allSubjects.where((s) => s.creatorId == creatorId).toList();
+      final snapshot = await _collection('subjects')
+          .where('creatorId', isEqualTo: creatorId)
+          .get();
+      
+      final List<Subject> subjects = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          subjects.add(Subject.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return subjects;
     } catch (e) {
       return [];
     }
@@ -228,12 +244,7 @@ class FirebaseDatabaseService {
     try {
       if (subject.id == null) throw 'Subject ID is required';
       
-      final snapshot = await _ref('subjects').orderByChild('id').equalTo(subject.id).once();
-      if (!snapshot.snapshot.exists) throw 'Subject not found';
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('subjects/$key').update(subject.toMap());
+      await _collection('subjects').doc(subject.id.toString()).update(subject.toMap());
       return 1;
     } catch (e) {
       throw 'Cập nhật môn học thất bại: $e';
@@ -242,21 +253,18 @@ class FirebaseDatabaseService {
 
   Future<int> deleteSubject(int id) async {
     try {
-      final snapshot = await _ref('subjects').orderByChild('id').equalTo(id).once();
-      if (!snapshot.snapshot.exists) return 0;
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('subjects/$key').remove();
+      await _collection('subjects').doc(id.toString()).delete();
       
       // Also delete related sessions
-      final sessionsSnapshot = await _ref('attendance_sessions').orderByChild('subjectId').equalTo(id).once();
-      if (sessionsSnapshot.snapshot.exists && sessionsSnapshot.snapshot.value != null) {
-        final sessionsData = sessionsSnapshot.snapshot.value as Map;
-        for (final sessionKey in sessionsData.keys) {
-          await _ref('attendance_sessions/$sessionKey').remove();
-        }
+      final sessionsSnapshot = await _collection('attendance_sessions')
+          .where('subjectId', isEqualTo: id)
+          .get();
+      
+      final batch = _firestore.batch();
+      for (var doc in sessionsSnapshot.docs) {
+        batch.delete(doc.reference);
       }
+      await batch.commit();
       
       return 1;
     } catch (e) {
@@ -268,13 +276,13 @@ class FirebaseDatabaseService {
 
   Future<AttendanceSession> createSession(AttendanceSession session) async {
     try {
-      final sessionsRef = _ref('attendance_sessions');
-      final newSessionRef = sessionsRef.push();
-      final id = int.tryParse(newSessionRef.key ?? '0') ?? DateTime.now().millisecondsSinceEpoch;
+      final sessionsRef = _collection('attendance_sessions');
+      final id = DateTime.now().millisecondsSinceEpoch;
       
       final sessionMap = session.copyWith(id: id).toMap();
       sessionMap['id'] = id;
-      await newSessionRef.set(sessionMap);
+      
+      await sessionsRef.doc(id.toString()).set(sessionMap);
       
       return session.copyWith(id: id);
     } catch (e) {
@@ -284,11 +292,12 @@ class FirebaseDatabaseService {
 
   Future<AttendanceSession?> getSession(int id) async {
     try {
-      final snapshot = await _ref('attendance_sessions').orderByChild('id').equalTo(id).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return AttendanceSession.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      final doc = await _collection('attendance_sessions').doc(id.toString()).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          return AttendanceSession.fromMap(data);
+        }
       }
       return null;
     } catch (e) {
@@ -298,23 +307,22 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceSession>> getAllSessions() async {
     try {
-      final snapshot = await _ref('attendance_sessions').once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('attendance_sessions')
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<AttendanceSession> sessions = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            final sessionMap = Map<String, dynamic>.from(value as Map);
-            sessions.add(AttendanceSession.fromMap(sessionMap));
-          } catch (e) {
-            // Skip invalid entries
-          }
-        });
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          sessions.add(AttendanceSession.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
       }
       
-      sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return sessions;
     } catch (e) {
       return [];
@@ -323,8 +331,21 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceSession>> getSessionsByCreator(int creatorId) async {
     try {
-      final allSessions = await getAllSessions();
-      return allSessions.where((s) => s.creatorId == creatorId).toList();
+      final snapshot = await _collection('attendance_sessions')
+          .where('creatorId', isEqualTo: creatorId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      final List<AttendanceSession> sessions = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          sessions.add(AttendanceSession.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return sessions;
     } catch (e) {
       return [];
     }
@@ -332,8 +353,21 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceSession>> getSessionsBySubject(int subjectId) async {
     try {
-      final allSessions = await getAllSessions();
-      return allSessions.where((s) => s.subjectId == subjectId).toList();
+      final snapshot = await _collection('attendance_sessions')
+          .where('subjectId', isEqualTo: subjectId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      final List<AttendanceSession> sessions = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          sessions.add(AttendanceSession.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return sessions;
     } catch (e) {
       return [];
     }
@@ -343,14 +377,9 @@ class FirebaseDatabaseService {
     try {
       if (session.id == null) throw 'Session ID is required';
       
-      final snapshot = await _ref('attendance_sessions').orderByChild('id').equalTo(session.id).once();
-      if (!snapshot.snapshot.exists) throw 'Session not found';
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
       final updatedMap = session.toMap();
       updatedMap['updatedAt'] = DateTime.now().toIso8601String();
-      await _ref('attendance_sessions/$key').update(updatedMap);
+      await _collection('attendance_sessions').doc(session.id.toString()).update(updatedMap);
       return 1;
     } catch (e) {
       throw 'Cập nhật buổi học thất bại: $e';
@@ -359,21 +388,18 @@ class FirebaseDatabaseService {
 
   Future<int> deleteSession(int id) async {
     try {
-      final snapshot = await _ref('attendance_sessions').orderByChild('id').equalTo(id).once();
-      if (!snapshot.snapshot.exists) return 0;
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('attendance_sessions/$key').remove();
+      await _collection('attendance_sessions').doc(id.toString()).delete();
       
       // Also delete related records
-      final recordsSnapshot = await _ref('attendance_records').orderByChild('sessionId').equalTo(id).once();
-      if (recordsSnapshot.snapshot.exists && recordsSnapshot.snapshot.value != null) {
-        final recordsData = recordsSnapshot.snapshot.value as Map;
-        for (final recordKey in recordsData.keys) {
-          await _ref('attendance_records/$recordKey').remove();
-        }
+      final recordsSnapshot = await _collection('attendance_records')
+          .where('sessionId', isEqualTo: id)
+          .get();
+      
+      final batch = _firestore.batch();
+      for (var doc in recordsSnapshot.docs) {
+        batch.delete(doc.reference);
       }
+      await batch.commit();
       
       return 1;
     } catch (e) {
@@ -385,13 +411,13 @@ class FirebaseDatabaseService {
 
   Future<AttendanceRecord> createRecord(AttendanceRecord record) async {
     try {
-      final recordsRef = _ref('attendance_records');
-      final newRecordRef = recordsRef.push();
-      final id = int.tryParse(newRecordRef.key ?? '0') ?? DateTime.now().millisecondsSinceEpoch;
+      final recordsRef = _collection('attendance_records');
+      final id = DateTime.now().millisecondsSinceEpoch;
       
       final recordMap = record.copyWith(id: id).toMap();
       recordMap['id'] = id;
-      await newRecordRef.set(recordMap);
+      
+      await recordsRef.doc(id.toString()).set(recordMap);
       
       return record.copyWith(id: id);
     } catch (e) {
@@ -401,11 +427,12 @@ class FirebaseDatabaseService {
 
   Future<AttendanceRecord?> getRecord(int id) async {
     try {
-      final snapshot = await _ref('attendance_records').orderByChild('id').equalTo(id).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return AttendanceRecord.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      final doc = await _collection('attendance_records').doc(id.toString()).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          return AttendanceRecord.fromMap(data);
+        }
       }
       return null;
     } catch (e) {
@@ -415,37 +442,37 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceRecord>> getRecordsBySession(int sessionId) async {
     try {
-      final snapshot = await _ref('attendance_records').orderByChild('sessionId').equalTo(sessionId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('attendance_records')
+          .where('sessionId', isEqualTo: sessionId)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<AttendanceRecord> records = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        for (final entry in data.entries) {
-          try {
-            final recordMap = Map<String, dynamic>.from(entry.value as Map);
-            
-            // Get student info
-            if (recordMap['studentId'] != null) {
-              final student = await getStudent(recordMap['studentId'] as int);
-              if (student != null) {
-                recordMap['studentName'] = student.name;
-                recordMap['studentCode'] = student.studentId;
-              }
+      for (var doc in snapshot.docs) {
+        try {
+          final recordMap = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+          
+          // Get student info
+          if (recordMap['studentId'] != null) {
+            final student = await getStudent(recordMap['studentId'] as int);
+            if (student != null) {
+              recordMap['studentName'] = student.name;
+              recordMap['studentCode'] = student.studentId;
             }
-            
-            // Get teacher info if exists
-            if (recordMap['checkedByTeacherId'] != null) {
-              final teacher = await getUserByUid(recordMap['checkedByTeacherId'].toString());
-              if (teacher != null) {
-                recordMap['teacherName'] = teacher.displayName;
-              }
-            }
-            
-            records.add(AttendanceRecord.fromMap(recordMap));
-          } catch (e) {
-            // Skip invalid entries
           }
+          
+          // Get teacher info if exists
+          if (recordMap['checkedByTeacherId'] != null) {
+            final teacher = await getUserByUid(recordMap['checkedByTeacherId'].toString());
+            if (teacher != null) {
+              recordMap['teacherName'] = teacher.displayName;
+            }
+          }
+          
+          records.add(AttendanceRecord.fromMap(recordMap));
+        } catch (e) {
+          // Skip invalid entries
         }
       }
       
@@ -458,22 +485,23 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceRecord>> getRecordsByStudent(int studentId) async {
     try {
-      final snapshot = await _ref('attendance_records').orderByChild('studentId').equalTo(studentId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('attendance_records')
+          .where('studentId', isEqualTo: studentId)
+          .orderBy('checkInTime', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<AttendanceRecord> records = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            records.add(AttendanceRecord.fromMap(Map<String, dynamic>.from(value as Map)));
-          } catch (e) {
-            // Skip invalid entries
-          }
-        });
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          records.add(AttendanceRecord.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
       }
       
-      records.sort((a, b) => b.checkInTime.compareTo(a.checkInTime));
       return records;
     } catch (e) {
       return [];
@@ -482,21 +510,15 @@ class FirebaseDatabaseService {
 
   Future<AttendanceRecord?> getRecordBySessionAndStudent(int sessionId, int studentId) async {
     try {
-      final snapshot = await _ref('attendance_records')
-          .orderByChild('sessionId')
-          .equalTo(sessionId)
-          .once();
+      final snapshot = await _collection('attendance_records')
+          .where('sessionId', isEqualTo: sessionId)
+          .where('studentId', isEqualTo: studentId)
+          .limit(1)
+          .get();
       
-      if (!snapshot.snapshot.exists) return null;
-      
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        for (final entry in data.entries) {
-          final recordMap = Map<String, dynamic>.from(entry.value as Map);
-          if (recordMap['studentId'] == studentId) {
-            return AttendanceRecord.fromMap(recordMap);
-          }
-        }
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data() as Map<String, dynamic>;
+        return AttendanceRecord.fromMap(data);
       }
       
       return null;
@@ -509,14 +531,9 @@ class FirebaseDatabaseService {
     try {
       if (record.id == null) throw 'Record ID is required';
       
-      final snapshot = await _ref('attendance_records').orderByChild('id').equalTo(record.id).once();
-      if (!snapshot.snapshot.exists) throw 'Record not found';
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
       final updatedMap = record.toMap();
       updatedMap['updatedAt'] = DateTime.now().toIso8601String();
-      await _ref('attendance_records/$key').update(updatedMap);
+      await _collection('attendance_records').doc(record.id.toString()).update(updatedMap);
       return 1;
     } catch (e) {
       throw 'Cập nhật bản ghi thất bại: $e';
@@ -525,12 +542,7 @@ class FirebaseDatabaseService {
 
   Future<int> deleteRecord(int id) async {
     try {
-      final snapshot = await _ref('attendance_records').orderByChild('id').equalTo(id).once();
-      if (!snapshot.snapshot.exists) return 0;
-      
-      final data = snapshot.snapshot.value as Map;
-      final key = data.keys.first;
-      await _ref('attendance_records/$key').remove();
+      await _collection('attendance_records').doc(id.toString()).delete();
       return 1;
     } catch (e) {
       throw 'Xóa bản ghi thất bại: $e';
@@ -585,8 +597,7 @@ class FirebaseDatabaseService {
 
   Future<AppUser> createUser(AppUser user) async {
     try {
-      final usersRef = _ref('users');
-      await usersRef.child(user.uid).set(user.toMap());
+      await _collection('users').doc(user.uid).set(user.toMap());
       return user;
     } catch (e) {
       throw 'Tạo người dùng thất bại: $e';
@@ -595,9 +606,12 @@ class FirebaseDatabaseService {
 
   Future<AppUser?> getUserByUid(String uid) async {
     try {
-      final snapshot = await _ref('users/$uid').once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        return AppUser.fromMap(Map<String, dynamic>.from(snapshot.snapshot.value as Map));
+      final doc = await _collection('users').doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          return AppUser.fromMap(data);
+        }
       }
       return null;
     } catch (e) {
@@ -607,11 +621,14 @@ class FirebaseDatabaseService {
 
   Future<AppUser?> getUserByEmail(String email) async {
     try {
-      final snapshot = await _ref('users').orderByChild('email').equalTo(email).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final entry = data.entries.first;
-        return AppUser.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      final snapshot = await _collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data() as Map<String, dynamic>;
+        return AppUser.fromMap(data);
       }
       return null;
     } catch (e) {
@@ -621,19 +638,17 @@ class FirebaseDatabaseService {
 
   Future<List<AppUser>> getAllUsers() async {
     try {
-      final snapshot = await _ref('users').once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('users').get();
+      if (snapshot.docs.isEmpty) return [];
       
       final List<AppUser> users = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          try {
-            users.add(AppUser.fromMap(Map<String, dynamic>.from(value as Map)));
-          } catch (e) {
-            // Skip invalid entries
-          }
-        });
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          users.add(AppUser.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
       }
       
       return users;
@@ -644,8 +659,20 @@ class FirebaseDatabaseService {
 
   Future<List<AppUser>> getUsersByRole(UserRole role) async {
     try {
-      final allUsers = await getAllUsers();
-      return allUsers.where((u) => u.role == role).toList();
+      final snapshot = await _collection('users')
+          .where('role', isEqualTo: role.name)
+          .get();
+      
+      final List<AppUser> users = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          users.add(AppUser.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return users;
     } catch (e) {
       return [];
     }
@@ -653,7 +680,7 @@ class FirebaseDatabaseService {
 
   Future<int> updateUser(AppUser user) async {
     try {
-      await _ref('users/${user.uid}').update(user.toMap());
+      await _collection('users').doc(user.uid).update(user.toMap());
       return 1;
     } catch (e) {
       throw 'Cập nhật người dùng thất bại: $e';
@@ -662,7 +689,7 @@ class FirebaseDatabaseService {
 
   Future<int> updateUserLastLogin(String uid) async {
     try {
-      await _ref('users/$uid').update({
+      await _collection('users').doc(uid).update({
         'lastLogin': DateTime.now().toIso8601String(),
       });
       return 1;
@@ -673,7 +700,7 @@ class FirebaseDatabaseService {
 
   Future<int> deleteUser(String uid) async {
     try {
-      await _ref('users/$uid').remove();
+      await _collection('users').doc(uid).delete();
       return 1;
     } catch (e) {
       throw 'Xóa người dùng thất bại: $e';
@@ -684,8 +711,8 @@ class FirebaseDatabaseService {
 
   Future<void> createQrToken(Map<String, dynamic> tokenData) async {
     try {
-      final tokensRef = _ref('qr_tokens');
-      await tokensRef.push().set(tokenData);
+      final tokensRef = _collection('qr_tokens');
+      await tokensRef.add(tokenData);
     } catch (e) {
       throw 'Tạo QR token thất bại: $e';
     }
@@ -693,10 +720,13 @@ class FirebaseDatabaseService {
 
   Future<Map<String, dynamic>?> getQrTokenByToken(String token) async {
     try {
-      final snapshot = await _ref('qr_tokens').orderByChild('token').equalTo(token).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        return Map<String, dynamic>.from(data.values.first as Map);
+      final snapshot = await _collection('qr_tokens')
+          .where('token', isEqualTo: token)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        return Map<String, dynamic>.from(snapshot.docs.first.data() as Map);
       }
       return null;
     } catch (e) {
@@ -706,11 +736,13 @@ class FirebaseDatabaseService {
 
   Future<void> updateQrToken(String token, Map<String, dynamic> updates) async {
     try {
-      final snapshot = await _ref('qr_tokens').orderByChild('token').equalTo(token).once();
-      if (snapshot.snapshot.exists && snapshot.snapshot.value != null) {
-        final data = snapshot.snapshot.value as Map;
-        final key = data.keys.first;
-        await _ref('qr_tokens/$key').update(updates);
+      final snapshot = await _collection('qr_tokens')
+          .where('token', isEqualTo: token)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        await snapshot.docs.first.reference.update(updates);
       }
     } catch (e) {
       throw 'Cập nhật QR token thất bại: $e';
@@ -721,8 +753,8 @@ class FirebaseDatabaseService {
 
   Future<void> addQrScanHistory(Map<String, dynamic> historyData) async {
     try {
-      final historyRef = _ref('qr_scan_history');
-      await historyRef.push().set(historyData);
+      final historyRef = _collection('qr_scan_history');
+      await historyRef.add(historyData);
     } catch (e) {
       throw 'Thêm lịch sử quét QR thất bại: $e';
     }
@@ -730,22 +762,17 @@ class FirebaseDatabaseService {
 
   Future<List<Map<String, dynamic>>> getQrScanHistoryByUser(int userId) async {
     try {
-      final snapshot = await _ref('qr_scan_history').orderByChild('userId').equalTo(userId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('qr_scan_history')
+          .where('userId', isEqualTo: userId)
+          .orderBy('scannedAt', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Map<String, dynamic>> history = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          history.add(Map<String, dynamic>.from(value as Map));
-        });
+      for (var doc in snapshot.docs) {
+        history.add(Map<String, dynamic>.from(doc.data() as Map));
       }
-      
-      history.sort((a, b) {
-        final aTime = DateTime.parse(a['scannedAt'] as String);
-        final bTime = DateTime.parse(b['scannedAt'] as String);
-        return bTime.compareTo(aTime);
-      });
       
       return history;
     } catch (e) {
@@ -757,8 +784,8 @@ class FirebaseDatabaseService {
 
   Future<void> addSessionHistory(Map<String, dynamic> historyData) async {
     try {
-      final historyRef = _ref('session_history');
-      await historyRef.push().set(historyData);
+      final historyRef = _collection('session_history');
+      await historyRef.add(historyData);
     } catch (e) {
       throw 'Thêm lịch sử buổi học thất bại: $e';
     }
@@ -766,22 +793,17 @@ class FirebaseDatabaseService {
 
   Future<List<Map<String, dynamic>>> getSessionHistory(int sessionId) async {
     try {
-      final snapshot = await _ref('session_history').orderByChild('sessionId').equalTo(sessionId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('session_history')
+          .where('sessionId', isEqualTo: sessionId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Map<String, dynamic>> history = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          history.add(Map<String, dynamic>.from(value as Map));
-        });
+      for (var doc in snapshot.docs) {
+        history.add(Map<String, dynamic>.from(doc.data() as Map));
       }
-      
-      history.sort((a, b) {
-        final aTime = DateTime.parse(a['createdAt'] as String);
-        final bTime = DateTime.parse(b['createdAt'] as String);
-        return bTime.compareTo(aTime);
-      });
       
       return history;
     } catch (e) {
@@ -793,8 +815,8 @@ class FirebaseDatabaseService {
 
   Future<void> addExportHistory(Map<String, dynamic> exportData) async {
     try {
-      final exportRef = _ref('export_history');
-      await exportRef.push().set(exportData);
+      final exportRef = _collection('export_history');
+      await exportRef.add(exportData);
     } catch (e) {
       throw 'Thêm lịch sử xuất file thất bại: $e';
     }
@@ -802,22 +824,17 @@ class FirebaseDatabaseService {
 
   Future<List<Map<String, dynamic>>> getExportHistoryByUser(int userId) async {
     try {
-      final snapshot = await _ref('export_history').orderByChild('userId').equalTo(userId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('export_history')
+          .where('userId', isEqualTo: userId)
+          .orderBy('exportedAt', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Map<String, dynamic>> history = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          history.add(Map<String, dynamic>.from(value as Map));
-        });
+      for (var doc in snapshot.docs) {
+        history.add(Map<String, dynamic>.from(doc.data() as Map));
       }
-      
-      history.sort((a, b) {
-        final aTime = DateTime.parse(a['exportedAt'] as String);
-        final bTime = DateTime.parse(b['exportedAt'] as String);
-        return bTime.compareTo(aTime);
-      });
       
       return history;
     } catch (e) {
@@ -838,11 +855,16 @@ class FirebaseDatabaseService {
   // Get session by sessionCode (4-digit code)
   Future<AttendanceSession?> getSessionByCode(String sessionCode) async {
     try {
-      final allSessions = await getAllSessions();
-      return allSessions.firstWhere(
-        (s) => s.sessionCode == sessionCode,
-        orElse: () => throw StateError('Session not found'),
-      );
+      final snapshot = await _collection('attendance_sessions')
+          .where('sessionCode', isEqualTo: sessionCode)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data() as Map<String, dynamic>;
+        return AttendanceSession.fromMap(data);
+      }
+      return null;
     } catch (e) {
       return null;
     }
@@ -851,8 +873,21 @@ class FirebaseDatabaseService {
   // Get sessions by student class code
   Future<List<AttendanceSession>> getSessionsByStudentClass(String classCode) async {
     try {
-      final allSessions = await getAllSessions();
-      return allSessions.where((s) => s.classCode == classCode).toList();
+      final snapshot = await _collection('attendance_sessions')
+          .where('classCode', isEqualTo: classCode)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      final List<AttendanceSession> sessions = [];
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          sessions.add(AttendanceSession.fromMap(data));
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+      return sessions;
     } catch (e) {
       return [];
     }
@@ -861,15 +896,15 @@ class FirebaseDatabaseService {
   // Get all QR tokens for a session
   Future<List<Map<String, dynamic>>> getQrTokensBySession(int sessionId) async {
     try {
-      final snapshot = await _ref('qr_tokens').orderByChild('sessionId').equalTo(sessionId).once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('qr_tokens')
+          .where('sessionId', isEqualTo: sessionId)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Map<String, dynamic>> tokens = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          tokens.add(Map<String, dynamic>.from(value as Map));
-        });
+      for (var doc in snapshot.docs) {
+        tokens.add(Map<String, dynamic>.from(doc.data() as Map));
       }
       
       return tokens;
@@ -881,30 +916,20 @@ class FirebaseDatabaseService {
   // Delete expired QR tokens
   Future<int> deleteExpiredQrTokens() async {
     try {
-      final snapshot = await _ref('qr_tokens').once();
-      if (!snapshot.snapshot.exists) return 0;
-      
-      int deletedCount = 0;
       final now = DateTime.now();
+      final snapshot = await _collection('qr_tokens')
+          .where('expiresAt', isLessThan: now.toIso8601String())
+          .get();
       
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        for (final entry in data.entries) {
-          try {
-            final tokenMap = Map<String, dynamic>.from(entry.value as Map);
-            final expiresAt = DateTime.parse(tokenMap['expiresAt'] as String);
-            
-            if (expiresAt.isBefore(now)) {
-              await _ref('qr_tokens/${entry.key}').remove();
-              deletedCount++;
-            }
-          } catch (e) {
-            // Skip invalid entries
-          }
-        }
+      if (snapshot.docs.isEmpty) return 0;
+      
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
       }
+      await batch.commit();
       
-      return deletedCount;
+      return snapshot.docs.length;
     } catch (e) {
       return 0;
     }
@@ -913,22 +938,16 @@ class FirebaseDatabaseService {
   // Get all export history (for admin)
   Future<List<Map<String, dynamic>>> getAllExportHistory() async {
     try {
-      final snapshot = await _ref('export_history').once();
-      if (!snapshot.snapshot.exists) return [];
+      final snapshot = await _collection('export_history')
+          .orderBy('exportedAt', descending: true)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return [];
       
       final List<Map<String, dynamic>> history = [];
-      if (snapshot.snapshot.value is Map) {
-        final data = snapshot.snapshot.value as Map;
-        data.forEach((key, value) {
-          history.add(Map<String, dynamic>.from(value as Map));
-        });
+      for (var doc in snapshot.docs) {
+        history.add(Map<String, dynamic>.from(doc.data() as Map));
       }
-      
-      history.sort((a, b) {
-        final aTime = DateTime.parse(a['exportedAt'] as String);
-        final bTime = DateTime.parse(b['exportedAt'] as String);
-        return bTime.compareTo(aTime);
-      });
       
       return history;
     } catch (e) {
@@ -939,11 +958,11 @@ class FirebaseDatabaseService {
   // Delete export history entry
   Future<void> deleteExportHistory(int id) async {
     try {
-      // In Firebase, we need to find by userId and exportedAt timestamp
+      // In Firestore, we need to find by document ID or use a query
       // Since we don't have direct ID access, we'll need to query and delete
       // For now, we'll skip deletion by ID - this is a limitation of the current structure
       // The caller should use userId-based queries instead
-      throw 'Delete by ID not directly supported in Firebase structure';
+      throw 'Delete by ID not directly supported in Firestore structure';
     } catch (e) {
       throw 'Xóa lịch sử xuất file thất bại: $e';
     }
@@ -995,4 +1014,3 @@ class FirebaseDatabaseService {
     }
   }
 }
-

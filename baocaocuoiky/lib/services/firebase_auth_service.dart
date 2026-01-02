@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -21,6 +22,20 @@ class FirebaseAuthService {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
     return digest.toString();
+  }
+
+  // Determine role based on email prefix
+  UserRole _getRoleFromEmail(String email) {
+    final emailLower = email.toLowerCase();
+    if (emailLower.startsWith('admin')) {
+      return UserRole.admin;
+    } else if (emailLower.startsWith('teacher')) {
+      return UserRole.teacher;
+    } else if (emailLower.startsWith('student')) {
+      return UserRole.student;
+    }
+    // Default to student if prefix doesn't match
+    return UserRole.student;
   }
 
   // Listen to auth state changes
@@ -52,14 +67,17 @@ class FirebaseAuthService {
       // Update display name in Firebase Auth
       await credential.user!.updateDisplayName(displayName);
 
-      // Create user in Realtime Database
+      // Determine role from email prefix
+      final role = _getRoleFromEmail(email);
+      
+      // Create user in Firestore
       final passwordHash = _hashPassword(password); // Keep for backward compatibility
       final user = AppUser(
         uid: credential.user!.uid,
         email: email,
         displayName: displayName,
         passwordHash: passwordHash,
-        role: UserRole.student, // Default role
+        role: role, // Role based on email prefix
         createdAt: DateTime.now(),
         lastLogin: DateTime.now(),
       );
@@ -71,12 +89,28 @@ class FirebaseAuthService {
       if (e.code == 'email-already-in-use') {
         throw 'Email đã được sử dụng';
       } else if (e.code == 'weak-password') {
-        throw 'Mật khẩu quá yếu';
+        throw 'Mật khẩu quá yếu (tối thiểu 6 ký tự)';
       } else if (e.code == 'invalid-email') {
         throw 'Email không hợp lệ';
+      } else if (e.message?.contains('blocked') == true || 
+                 e.message?.contains('unusual activity') == true ||
+                 e.message?.contains('rate') == true) {
+        throw 'Firebase đã tạm thời chặn thiết bị này do tạo quá nhiều tài khoản.\n\n'
+              'Vui lòng đợi 15-30 phút rồi thử lại.\n\n'
+              'Hoặc tạo tài khoản qua Firebase Console:\n'
+              'https://console.firebase.google.com';
       }
-      throw 'Đăng ký thất bại: ${e.message}';
+      throw 'Đăng ký thất bại: ${e.message ?? e.code}';
     } catch (e) {
+      final errorMsg = e.toString();
+      if (errorMsg.contains('blocked') || 
+          errorMsg.contains('unusual activity') ||
+          errorMsg.contains('rate')) {
+        throw 'Firebase đã tạm thời chặn thiết bị này do tạo quá nhiều tài khoản.\n\n'
+              'Vui lòng đợi 15-30 phút rồi thử lại.\n\n'
+              'Hoặc tạo tài khoản qua Firebase Console:\n'
+              'https://console.firebase.google.com';
+      }
       throw 'Đăng ký thất bại: $e';
     }
   }
@@ -88,8 +122,9 @@ class FirebaseAuthService {
   }) async {
     try {
       // Sign in with Firebase Auth with timeout
+      // Note: Firebase Auth handles password authentication, not passwordHash
       final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
+        email: email.trim().toLowerCase(),
         password: password,
       ).timeout(
         const Duration(seconds: 15),
@@ -102,7 +137,7 @@ class FirebaseAuthService {
         throw 'Đăng nhập thất bại';
       }
 
-      // Load user from Realtime Database with timeout
+      // Load user from Firestore with timeout
       AppUser? user;
       try {
         user = await _db.getUserByUid(credential.user!.uid).timeout(
@@ -110,18 +145,22 @@ class FirebaseAuthService {
         );
       } catch (e) {
         // If error or timeout loading from DB, continue with creating new user
+        debugPrint('Error loading user from Firestore: $e');
         user = null;
       }
 
       if (user == null) {
-        // User exists in Auth but not in Database - create it
+        // User exists in Auth but not in Firestore - create it
+        // Determine role from email prefix
+        final role = _getRoleFromEmail(credential.user!.email ?? email);
+        
         final newUser = AppUser(
           uid: credential.user!.uid,
           email: credential.user!.email ?? email,
           displayName: credential.user!.displayName ?? 'User',
-          passwordHash: _hashPassword(password),
+          passwordHash: _hashPassword(password), // Store hash for reference (not used for auth)
           photoUrl: credential.user!.photoURL,
-          role: UserRole.student,
+          role: role, // Role based on email prefix
           createdAt: DateTime.now(),
           lastLogin: DateTime.now(),
         );
@@ -130,7 +169,9 @@ class FirebaseAuthService {
           await _db.createUser(newUser).timeout(
             const Duration(seconds: 10),
           );
+          debugPrint('Created new user in Firestore: ${newUser.email}');
         } catch (e) {
+          debugPrint('Error creating user in Firestore: $e');
           // Continue even if create fails - user can still login
         }
         
@@ -147,6 +188,7 @@ class FirebaseAuthService {
         return newUser;
       }
 
+      // User exists in both Auth and Firestore
       // Update last login
       try {
         await _db.updateUserLastLogin(user.uid).timeout(
@@ -160,9 +202,9 @@ class FirebaseAuthService {
       return _currentUser;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
-        throw 'Email hoặc mật khẩu không đúng';
+        throw 'Sai tài khoản hoặc mật khẩu';
       } else if (e.code == 'wrong-password') {
-        throw 'Email hoặc mật khẩu không đúng';
+        throw 'Sai tài khoản hoặc mật khẩu';
       } else if (e.code == 'invalid-email') {
         throw 'Email không hợp lệ';
       } else if (e.code == 'unknown' || e.message?.contains('CONFIGURATION_NOT_FOUND') == true) {
@@ -172,6 +214,9 @@ class FirebaseAuthService {
     } catch (e) {
       if (e.toString().contains('timeout')) {
         throw e.toString();
+      }
+      if (e.toString().contains('Sai tài khoản') || e.toString().contains('Sai mật khẩu')) {
+        throw 'Sai tài khoản hoặc mật khẩu';
       }
       throw 'Đăng nhập thất bại: $e';
     }
@@ -258,6 +303,9 @@ class FirebaseAuthService {
         // User might exist in Auth but not in Database
         final authUser = _auth.currentUser;
         if (authUser != null && authUser.uid == uid) {
+          // Determine role from email prefix
+          final role = _getRoleFromEmail(authUser.email ?? '');
+          
           // Create user in database
           final newUser = AppUser(
             uid: authUser.uid,
@@ -265,7 +313,7 @@ class FirebaseAuthService {
             displayName: authUser.displayName ?? 'User',
             passwordHash: '', // Will be set on next login
             photoUrl: authUser.photoURL,
-            role: UserRole.student,
+            role: role, // Role based on email prefix
             createdAt: DateTime.now(),
             lastLogin: DateTime.now(),
           );
@@ -345,7 +393,7 @@ class FirebaseAuthService {
 
       await credential.user!.updateDisplayName(displayName);
 
-      // Create admin user in Realtime Database
+      // Create admin user in Firestore
       final passwordHash = _hashPassword(password);
       final user = AppUser(
         uid: credential.user!.uid,
@@ -361,6 +409,86 @@ class FirebaseAuthService {
       return user;
     } catch (e) {
       throw 'Tạo admin thất bại: $e';
+    }
+  }
+
+  // Create user with specific role
+  Future<AppUser> createUserWithRole({
+    required String email,
+    required String password,
+    required String displayName,
+    required UserRole role,
+  }) async {
+    try {
+      // Check if email already exists
+      final existingUser = await _db.getUserByEmail(email);
+      if (existingUser != null) {
+        // User already exists, return it
+        return existingUser;
+      }
+
+      // Create Firebase Auth user
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      if (credential.user == null) {
+        throw 'Tạo tài khoản thất bại';
+      }
+
+      await credential.user!.updateDisplayName(displayName);
+
+      // Create user in Firestore
+      final passwordHash = _hashPassword(password);
+      final user = AppUser(
+        uid: credential.user!.uid,
+        email: email,
+        displayName: displayName,
+        passwordHash: passwordHash,
+        role: role,
+        createdAt: DateTime.now(),
+        lastLogin: DateTime.now(),
+      );
+
+      await _db.createUser(user);
+      return user;
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        // User exists in Auth but maybe not in Firestore, try to get it
+        try {
+          final authUser = await _auth.signInWithEmailAndPassword(
+            email: email,
+            password: password,
+          );
+          if (authUser.user != null) {
+            final existingUser = await _db.getUserByUid(authUser.user!.uid);
+            if (existingUser != null) {
+              return existingUser;
+            }
+            // Create in Firestore if not exists
+            final passwordHash = _hashPassword(password);
+            final user = AppUser(
+              uid: authUser.user!.uid,
+              email: email,
+              displayName: displayName,
+              passwordHash: passwordHash,
+              role: role,
+              createdAt: DateTime.now(),
+              lastLogin: DateTime.now(),
+            );
+            await _db.createUser(user);
+            await _auth.signOut(); // Sign out after creating
+            return user;
+          }
+        } catch (_) {
+          // Ignore
+        }
+        throw 'Email đã được sử dụng';
+      }
+      throw 'Tạo người dùng thất bại: ${e.message}';
+    } catch (e) {
+      throw 'Tạo người dùng thất bại: $e';
     }
   }
 }

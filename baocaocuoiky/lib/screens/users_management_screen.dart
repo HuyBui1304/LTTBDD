@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/app_user.dart';
 import '../widgets/state_widgets.dart' as custom;
+import '../services/sample_data_service.dart';
 
 class UsersManagementScreen extends StatefulWidget {
   final UserRole? filterRole; // Filter by role if provided
@@ -14,8 +15,10 @@ class UsersManagementScreen extends StatefulWidget {
 
 class _UsersManagementScreenState extends State<UsersManagementScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final SampleDataService _sampleDataService = SampleDataService.instance;
   List<AppUser> _users = [];
   bool _isLoading = true;
+  bool _isCreatingSampleData = false;
   String _searchQuery = '';
 
   @override
@@ -167,12 +170,98 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     }
   }
 
+  Future<void> _createSampleData() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tạo dữ liệu mẫu'),
+        content: const Text(
+          'Bạn có muốn tạo dữ liệu mẫu (1 admin, 5 teacher, 15 student, 10 môn học)?\n\n'
+          '⚠️ CẢNH BÁO:\n'
+          '• Firebase đã chặn device này do tạo/xóa quá nhiều users\n'
+          '• Nếu vẫn bị chặn, vui lòng ĐỢI 15-30 PHÚT rồi thử lại\n'
+          '• Hoặc tạo users thủ công qua Firebase Console (khuyến nghị)\n'
+          '• Quá trình này sẽ mất vài phút với delay lớn giữa các users\n\n'
+          'Xem hướng dẫn chi tiết trong file FIREBASE_RATE_LIMIT_GUIDE.md',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Vẫn tạo'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCreatingSampleData = true);
+
+    try {
+      // Tạo users với delay lớn
+      final teachers = await _sampleDataService.initializeSampleUsers();
+      
+      // Đợi 5 giây trước khi tạo subjects
+      await Future.delayed(const Duration(seconds: 5));
+      
+      // Tạo subjects
+      await _sampleDataService.initializeSampleSubjects(teachers);
+      
+      // Reload users list
+      await _loadUsers();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã tạo dữ liệu mẫu thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tạo dữ liệu mẫu: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingSampleData = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Quản lý tài khoản'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          if (widget.filterRole == null) // Chỉ hiện trong màn hình chính, không phải filter
+            IconButton(
+              icon: _isCreatingSampleData
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_circle_outline),
+              onPressed: _isCreatingSampleData ? null : _createSampleData,
+              tooltip: 'Tạo dữ liệu mẫu',
+            ),
+        ],
       ),
       body: Column(
         children: [

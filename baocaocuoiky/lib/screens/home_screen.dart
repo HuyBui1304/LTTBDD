@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final authProvider = context.read<AuthProvider>();
@@ -43,7 +44,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final role = currentUser?.role;
 
       if (role == null) {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
         return;
       }
 
@@ -57,27 +60,31 @@ class _HomeScreenState extends State<HomeScreen> {
         final sessions = await _db.getSessionsByCreator(userId);
         final students = await _db.getAllStudents(); // Teachers can see all students
 
-        setState(() {
-          _totalStudents = students.length;
-          _totalSessions = sessions.length;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _totalStudents = students.length;
+            _totalSessions = sessions.length;
+            _isLoading = false;
+          });
+        }
       } else {
         // Admin: Load all data
         final students = await _db.getAllStudents();
         final sessions = await _db.getAllSessions();
         final teachers = await _db.getUsersByRole(UserRole.teacher);
 
-        setState(() {
-          _totalStudents = students.length;
-          _totalSessions = sessions.length;
-          _totalTeachers = teachers.length;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _totalStudents = students.length;
+            _totalSessions = sessions.length;
+            _totalTeachers = teachers.length;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi tải dữ liệu: $e')),
         );
@@ -99,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Get attendance records for this student
     final allRecords = <AttendanceRecord>[];
     for (final session in classSessions) {
+      if (!mounted) return; // Check mounted in loop
       if (session.id != null) {
         final record = await _db.getRecordBySessionAndStudent(
           session.id!,
@@ -110,11 +118,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    setState(() {
-      _totalStudents = 1; // Show as "1" (self)
-      _totalSessions = classSessions.length;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _totalStudents = 1; // Show as "1" (self)
+        _totalSessions = classSessions.length;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<int> _getUserId(AppUser user) async {
@@ -387,14 +397,22 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const StudentsScreen()),
-    ).then((_) => _loadData());
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   void _navigateToSessions() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const SubjectsScreen()),
-    ).then((_) => _loadData());
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   void _navigateToTeachers() {
@@ -403,7 +421,11 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => UsersManagementScreen(filterRole: UserRole.teacher),
       ),
-    ).then((_) => _loadData());
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   // Build student home interface
