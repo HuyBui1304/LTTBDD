@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/subject.dart';
-import '../models/student.dart';
 import '../database/database_helper.dart';
 import '../widgets/state_widgets.dart' as custom;
 import '../widgets/custom_text_field.dart';

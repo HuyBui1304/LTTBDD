@@ -52,7 +52,7 @@ class _StudentClassAttendanceHistoryScreenState
       }
 
       // Get all sessions for this class
-      final sessions = await _db.getAllSessions(classCode: widget.classCode);
+      final sessions = await _db.getSessionsByStudentClass(widget.classCode);
 
       // Get attendance records for this student
       final records = <int, AttendanceRecord>{};

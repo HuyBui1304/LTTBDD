@@ -119,7 +119,12 @@ class QrTokenService {
         usedFromIp: ipAddress,
       );
 
-      await _db.updateQrToken(updatedToken.toMap());
+      await _db.updateQrToken(token, {
+        'isUsed': 1,
+        'usedByUserId': userId,
+        'usedAt': DateTime.now().toIso8601String(),
+        'usedFromIp': ipAddress,
+      });
 
       return {
         'valid': true,

@@ -99,18 +99,8 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         return;
       }
 
-      // Get user ID
-      final userMaps = await _db.database.then((db) => db.query(
-        'users',
-        where: 'uid = ?',
-        whereArgs: [currentUser.uid],
-      ));
-      if (userMaps.isEmpty) {
-        _showError('Không tìm thấy thông tin người dùng');
-        setState(() => _isProcessing = false);
-        return;
-      }
-      final userId = userMaps.first['id'] as int;
+      // Get user ID from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
 
       // Get student by user email
       final allStudents = await _db.getAllStudents();
@@ -311,14 +301,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       int? userId;
       
       if (currentUser != null) {
-        final userMaps = await _db.database.then((db) => db.query(
-          'users',
-          where: 'uid = ?',
-          whereArgs: [currentUser.uid],
-        ));
-        if (userMaps.isNotEmpty) {
-          userId = userMaps.first['id'] as int;
-        }
+        userId = _db.uidToUserId(currentUser.uid);
       }
 
       // Save QR scan history
@@ -402,14 +385,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       int? userId;
       
       if (currentUser != null) {
-        final userMaps = await _db.database.then((db) => db.query(
-          'users',
-          where: 'uid = ?',
-          whereArgs: [currentUser.uid],
-        ));
-        if (userMaps.isNotEmpty) {
-          userId = userMaps.first['id'] as int;
-        }
+        userId = _db.uidToUserId(currentUser.uid);
       }
 
       // Save QR scan history
@@ -729,18 +705,8 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         return;
       }
 
-      // Get user ID
-      final userMaps = await _db.database.then((db) => db.query(
-        'users',
-        where: 'uid = ?',
-        whereArgs: [currentUser.uid],
-      ));
-      if (userMaps.isEmpty) {
-        _showError('Không tìm thấy thông tin người dùng');
-        setState(() => _isProcessing = false);
-        return;
-      }
-      final userId = userMaps.first['id'] as int;
+      // Get user ID from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
 
       // Get student by user email
       final allStudents = await _db.getAllStudents();

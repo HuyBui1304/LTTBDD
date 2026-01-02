@@ -32,15 +32,8 @@ class _ExportHistoryScreenState extends State<ExportHistoryScreen> {
 
       if (currentUser == null) return;
 
-      // Get numeric id from database
-      final userMaps = await _db.database.then((db) => db.query(
-        'users',
-        where: 'uid = ?',
-        whereArgs: [currentUser.uid],
-      ));
-      
-      if (userMaps.isEmpty) return;
-      final userId = userMaps.first['id'] as int;
+      // Get numeric id from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
 
       final historyMaps = authProvider.isAdmin
           ? await _db.getAllExportHistory()

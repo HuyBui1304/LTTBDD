@@ -56,7 +56,8 @@ class _SubjectsScreenState extends State<SubjectsScreen> {
       if (role == UserRole.student) {
         // Student: Get subjects by their class
         final student = await _getStudentByUser(currentUser!);
-        subjects = await _db.getAllSubjects(classCode: student.classCode);
+        final allSubjects = await _db.getAllSubjects();
+        subjects = allSubjects.where((s) => s.classCode == student.classCode).toList();
       } else if (role == UserRole.teacher) {
         // Teacher: Get only subjects they created
         final userId = await _getUserId(currentUser!);
@@ -82,14 +83,8 @@ class _SubjectsScreenState extends State<SubjectsScreen> {
   }
 
   Future<int> _getUserId(AppUser user) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'users',
-      where: 'uid = ?',
-      whereArgs: [user.uid],
-    );
-    if (maps.isEmpty) throw Exception('User not found');
-    return maps.first['id'] as int;
+    // Get numeric ID from UID (hash-based for Firebase compatibility)
+    return _db.uidToUserId(user.uid);
   }
 
   Future<Student> _getStudentByUser(AppUser user) async {

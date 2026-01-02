@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "746586500600",
+    "firebase_url": "https://baocaocuoiky-5851c-default-rtdb.firebaseio.com",
+    "project_id": "baocaocuoiky-5851c",
+    "storage_bucket": "baocaocuoiky-5851c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:746586500600:android:bf212d66502883a8a03a0d",
+        "android_client_info": {
+          "package_name": "com.example.baocaocuoiky"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcWYQDkLNTUfzvt8ugXFFZDw8cAakzIZo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

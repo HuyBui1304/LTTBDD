@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_user.dart';
-import '../services/local_auth_service.dart';
+import '../services/firebase_auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
-  final LocalAuthService _authService = LocalAuthService.instance;
+  final FirebaseAuthService _authService = FirebaseAuthService.instance;
   
   AppUser? _currentUser;
   bool _isLoading = false;
@@ -30,10 +30,18 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedUid = prefs.getString('user_uid');
       if (savedUid != null) {
-        await loadCurrentUser(savedUid);
+        // Add timeout to prevent hanging
+        await loadCurrentUser(savedUid).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            _error = 'Không thể tải thông tin người dùng. Vui lòng thử lại.';
+            _currentUser = null;
+          },
+        );
       }
     } catch (e) {
       _error = e.toString();
+      _currentUser = null;
     } finally {
       _isInitializing = false;
       notifyListeners();
@@ -101,9 +109,15 @@ class AuthProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
+      // Add overall timeout to prevent infinite loading
       _currentUser = await _authService.signInWithEmailPassword(
         email: email,
         password: password,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw 'Đăng nhập timeout. Vui lòng thử lại.';
+        },
       );
 
       if (_currentUser != null) {

@@ -555,7 +555,6 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
         return Colors.grey;
       case SessionStatus.scheduled:
         return Colors.blue;
-        return Colors.grey;
     }
   }
 

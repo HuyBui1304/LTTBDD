@@ -80,14 +80,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
   
   Future<int> _getUserId(AppUser user) async {
-    final db = await _db.database;
-    final maps = await db.query(
-      'users',
-      where: 'uid = ?',
-      whereArgs: [user.uid],
-    );
-    if (maps.isEmpty) throw Exception('User not found');
-    return maps.first['id'] as int;
+    // Get numeric ID from UID (hash-based for Firebase compatibility)
+    return _db.uidToUserId(user.uid);
   }
   
   Future<Student> _getStudentByUser(AppUser user) async {
@@ -265,18 +259,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
                   try {
-                    // Get creatorId for new sessions
-                    int? creatorId;
-                    if (!isEdit) {
-                      final authProvider = context.read<AuthProvider>();
-                      final currentUser = authProvider.currentUser;
-                      if (currentUser != null) {
-                        creatorId = await _getUserId(currentUser);
-                      }
-                    } else {
-                      creatorId = session.creatorId;
-                    }
-                    
                     // NOTE: Logic mới - sessions được tạo tự động khi tạo Subject
                     // Tạm thời disable create new session
                     // TODO: Implement Subject creation screen instead

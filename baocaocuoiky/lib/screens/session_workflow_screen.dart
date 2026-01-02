@@ -53,23 +53,8 @@ class _SessionWorkflowScreenState extends State<SessionWorkflowScreen> {
         return;
       }
 
-      // Get user ID from database
-      final userMaps = await _db.database.then((db) => db.query(
-        'users',
-        where: 'uid = ?',
-        whereArgs: [currentUser.uid],
-      ));
-      
-      if (userMaps.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Không tìm thấy thông tin người dùng')),
-          );
-        }
-        return;
-      }
-      
-      final userId = userMaps.first['id'] as int;
+      // Get user ID from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
 
       // Update session status
       final updatedSession = widget.session.copyWith(status: newStatus);

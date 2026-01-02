@@ -276,8 +276,6 @@ class _SessionCard extends StatelessWidget {
         return Colors.grey;
       case SessionStatus.scheduled:
         return Colors.blue;
-      default:
-        return Colors.grey;
     }
   }
 
@@ -287,8 +285,6 @@ class _SessionCard extends StatelessWidget {
         return 'Đã hoàn thành';
       case SessionStatus.scheduled:
         return 'Chưa diễn ra';
-      default:
-        return status.displayName;
     }
   }
 }

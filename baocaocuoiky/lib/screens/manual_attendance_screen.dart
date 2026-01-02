@@ -77,14 +77,8 @@ class _ManualAttendanceScreenState extends State<ManualAttendanceScreen> {
     final currentUser = authProvider.currentUser;
     if (currentUser == null) throw Exception('Chưa đăng nhập');
     
-    final db = await _db.database;
-    final maps = await db.query(
-      'users',
-      where: 'uid = ?',
-      whereArgs: [currentUser.uid],
-    );
-    if (maps.isEmpty) throw Exception('Không tìm thấy thông tin người dùng');
-    return maps.first['id'] as int;
+    // Get numeric ID from UID (hash-based for Firebase compatibility)
+    return _db.uidToUserId(currentUser.uid);
   }
 
   Future<void> _markAttendance(Student student, AttendanceStatus status) async {

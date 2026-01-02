@@ -16,20 +16,9 @@ class DemoApp extends StatelessWidget {
   }
 }
 
-class DemoScreen extends StatefulWidget {
-  const DemoScreen({super.key});
-
-  @override
-  State<DemoScreen> createState() => _DemoScreenState();
-}
-
-class _DemoScreenState extends State<DemoScreen> {
-  // ===== STATE cho card tương tác =====
-  int counter = 0;
-  bool isOn = false;
-
-  // ===== DATA sinh viên =====
-  final List<Map<String, String>> students = const [
+// ===== DATA sinh viên (đưa ra ngoài để hot reload hoạt động) =====
+List<Map<String, String>> getStudentsData() {
+  return [
     {
       'name': 'Bùi Minh Huy',
       'id': '2286400009',
@@ -52,12 +41,25 @@ class _DemoScreenState extends State<DemoScreen> {
       'email': 'tam.ntt@hutech.edu.vn',
     },
   ];
+}
+
+class DemoScreen extends StatefulWidget {
+  const DemoScreen({super.key});
+
+  @override
+  State<DemoScreen> createState() => _DemoScreenState();
+}
+
+class _DemoScreenState extends State<DemoScreen> {
+  // ===== STATE cho card tương tác =====
+  int counter = 0;
+  bool isOn = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Demo nhóm 1'),
+        title: const Text('demo nhóm 1'),
         backgroundColor: Colors.blue,
       ),
       body: ListView(
@@ -65,7 +67,7 @@ class _DemoScreenState extends State<DemoScreen> {
         children: [
           // ==================================================
           // ==================================================
-          ...students.asMap().entries.map((entry) {
+          ...getStudentsData().asMap().entries.map((entry) {
             final index = entry.key;
             final student = entry.value;
 

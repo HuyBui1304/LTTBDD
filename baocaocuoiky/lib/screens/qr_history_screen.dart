@@ -34,20 +34,9 @@ class _QRHistoryScreenState extends State<QRHistoryScreen> {
         return;
       }
 
-      // Get user ID from database
-      final userMaps = await _db.database.then((db) => db.query(
-        'users',
-        where: 'uid = ?',
-        whereArgs: [currentUser.uid],
-      ));
-      
-      if (userMaps.isEmpty) {
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      final userId = userMaps.first['id'] as int;
-      final history = await _db.getQRScanHistoryByUser(userId);
+      // Get user ID from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
+      final history = await _db.getQrScanHistoryByUser(userId);
       
       setState(() {
         _history = history;
