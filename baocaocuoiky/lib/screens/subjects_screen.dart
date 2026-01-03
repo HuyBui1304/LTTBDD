@@ -54,14 +54,23 @@ class _SubjectsScreenState extends State<SubjectsScreen> {
       List<Subject> subjects;
 
       if (role == UserRole.student) {
-        // Student: Get subjects by their class
+        // Student: Get subjects by their subjectIds
         final student = await _getStudentByUser(currentUser!);
         final allSubjects = await _db.getAllSubjects();
-        subjects = allSubjects.where((s) => s.classCode == student.classCode).toList();
+        
+        if (student.subjectIds != null && student.subjectIds!.isNotEmpty) {
+          // Lấy các môn học mà học sinh đăng ký (dựa trên subjectIds)
+          subjects = allSubjects
+              .where((s) => s.id != null && student.subjectIds!.contains(s.id.toString()))
+              .toList();
+        } else {
+          // Nếu không có subjectIds, trả về danh sách rỗng
+          subjects = [];
+        }
       } else if (role == UserRole.teacher) {
         // Teacher: Get only subjects they created
-        final userId = await _getUserId(currentUser!);
-        subjects = await _db.getSubjectsByCreator(userId);
+        final teacherUid = currentUser!.uid; // Dùng UID trực tiếp
+        subjects = await _db.getSubjectsByCreator(teacherUid);
       } else {
         // Admin: Get all subjects
         subjects = await _db.getAllSubjects();
@@ -82,10 +91,7 @@ class _SubjectsScreenState extends State<SubjectsScreen> {
     }
   }
 
-  Future<int> _getUserId(AppUser user) async {
-    // Get numeric ID from UID (hash-based for Firebase compatibility)
-    return _db.uidToUserId(user.uid);
-  }
+  // Không cần _getUserId nữa, dùng UID trực tiếp
 
   Future<Student> _getStudentByUser(AppUser user) async {
     final allStudents = await _db.getAllStudents();

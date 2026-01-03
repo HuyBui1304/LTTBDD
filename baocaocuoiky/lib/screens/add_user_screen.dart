@@ -4,25 +4,21 @@ import '../providers/auth_provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../utils/validators.dart';
 
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+class AddUserScreen extends StatefulWidget {
+  const AddUserScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  State<AddUserScreen> createState() => _AddUserScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _AddUserScreenState extends State<AddUserScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _securityCodeController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  
-  // Mã bảo mật để đăng ký
-  static const String _securityCode = '1234';
 
   @override
   void dispose() {
@@ -30,7 +26,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _securityCodeController.dispose();
     super.dispose();
   }
 
@@ -44,17 +39,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  String? _validateSecurityCode(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Vui lòng nhập mã bảo mật';
-    }
-    if (value != _securityCode) {
-      return 'Mã bảo mật không đúng';
-    }
-    return null;
-  }
-
-  Future<void> _handleRegister() async {
+  Future<void> _handleCreateUser() async {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = context.read<AuthProvider>();
@@ -65,7 +50,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (success && mounted) {
-      // Quay lại màn hình đăng nhập và truyền kết quả thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã tạo tài khoản thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
       Navigator.pop(context, true);
     } else if (mounted && authProvider.error != null) {
       final error = authProvider.error!;
@@ -139,7 +129,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Đăng ký'),
+        title: const Text('Thêm tài khoản'),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -171,7 +161,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Điền thông tin để đăng ký',
+                      'Điền thông tin để tạo tài khoản',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
@@ -256,30 +246,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       obscureText: _obscureConfirmPassword,
                       validator: _validateConfirmPassword,
                     ),
-                    const SizedBox(height: 16),
-
-                    // Security Code field
-                    TextFormField(
-                      controller: _securityCodeController,
-                      decoration: InputDecoration(
-                        labelText: 'Mã bảo mật',
-                        hintText: 'Nhập mã 4 số',
-                        prefixIcon: const Icon(Icons.security),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor:
-                            Theme.of(context).colorScheme.surfaceContainerHighest,
-                        counterText: '', // Ẩn counter khi dùng maxLength
-                      ),
-                      keyboardType: TextInputType.number,
-                      maxLength: 4,
-                      validator: _validateSecurityCode,
-                    ),
                     const SizedBox(height: 32),
 
-                    // Register button
+                    // Create button
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
                         return SizedBox(
@@ -287,7 +256,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           height: 50,
                           child: FilledButton(
                             onPressed:
-                                authProvider.isLoading ? null : _handleRegister,
+                                authProvider.isLoading ? null : _handleCreateUser,
                             child: authProvider.isLoading
                                 ? const SizedBox(
                                     width: 20,
@@ -298,33 +267,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ),
                                   )
                                 : const Text(
-                                    'Đăng ký',
+                                    'Tạo tài khoản',
                                     style: TextStyle(fontSize: 16),
                                   ),
                           ),
                         );
                       },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Login link
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Đã có tài khoản? ',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          child: const Text(
-                            'Đăng nhập',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),

@@ -9,7 +9,7 @@ class AttendanceSession {
   final DateTime? sessionDate; // Ngày học (nullable - có thể chưa set)
   final String? location; // Địa điểm
   final SessionStatus status;
-  final int? creatorId; // ID người tạo (user id trong bảng users)
+  final String? creatorId; // UID của người tạo (teacher/admin)
   final DateTime createdAt;
   final DateTime updatedAt;
   
@@ -49,7 +49,7 @@ class AttendanceSession {
       'sessionDate': sessionDate?.toIso8601String(),
       'location': location,
       'status': status.name,
-      'creatorId': creatorId,
+      'creatorId': creatorId, // UID của creator
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -73,7 +73,7 @@ class AttendanceSession {
         (e) => e.name == map['status'],
         orElse: () => SessionStatus.scheduled,
       ),
-      creatorId: map['creatorId'] as int?,
+      creatorId: map['creatorId'] as String?, // UID của creator
       creatorName: map['creatorName'] as String?,
       subjectName: map['subjectName'] as String?,
       createdAt: DateTime.parse(map['createdAt'] as String),
@@ -93,7 +93,7 @@ class AttendanceSession {
     DateTime? sessionDate,
     String? location,
     SessionStatus? status,
-    int? creatorId,
+    String? creatorId, // UID của creator
     String? creatorName,
     String? subjectName,
     DateTime? createdAt,

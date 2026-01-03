@@ -51,7 +51,7 @@ class FirebaseAuthService {
       // Check if email already exists in our database
       final existingUser = await _db.getUserByEmail(email);
       if (existingUser != null) {
-        throw 'Email đã được sử dụng';
+        throw 'Email đã tồn tại';
       }
 
       // Create Firebase Auth user
@@ -87,7 +87,7 @@ class FirebaseAuthService {
       return user;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
-        throw 'Email đã được sử dụng';
+        throw 'Email đã tồn tại';
       } else if (e.code == 'weak-password') {
         throw 'Mật khẩu quá yếu (tối thiểu 6 ký tự)';
       } else if (e.code == 'invalid-email') {
@@ -202,9 +202,9 @@ class FirebaseAuthService {
       return _currentUser;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
-        throw 'Sai tài khoản hoặc mật khẩu';
+        throw 'Tài khoản hoặc mật khẩu không chính xác';
       } else if (e.code == 'wrong-password') {
-        throw 'Sai tài khoản hoặc mật khẩu';
+        throw 'Tài khoản hoặc mật khẩu không chính xác';
       } else if (e.code == 'invalid-email') {
         throw 'Email không hợp lệ';
       } else if (e.code == 'unknown' || e.message?.contains('CONFIGURATION_NOT_FOUND') == true) {
@@ -236,13 +236,24 @@ class FirebaseAuthService {
   // Reset password
   Future<void> resetPassword(String email) async {
     try {
+      // Check if email exists in Firestore first
+      final existingUser = await _db.getUserByEmail(email);
+      if (existingUser == null) {
+        throw 'Email không tồn tại';
+      }
+      
+      // Send password reset email
       await _auth.sendPasswordResetEmail(email: email);
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
-        throw 'Không tìm thấy người dùng với email này';
+        throw 'Email không tồn tại';
       }
       throw 'Gửi email khôi phục thất bại: ${e.message}';
     } catch (e) {
+      // Re-throw if it's already our custom error message
+      if (e.toString().contains('Email không tồn tại')) {
+        rethrow;
+      }
       throw 'Gửi email khôi phục thất bại: $e';
     }
   }
@@ -358,7 +369,7 @@ class FirebaseAuthService {
     return await _db.getAllUsers();
   }
 
-  // Delete account
+  // Delete account (current user only)
   Future<void> deleteAccount() async {
     if (_currentUser == null) return;
     
@@ -366,12 +377,24 @@ class FirebaseAuthService {
       // Delete from Firebase Auth
       await _auth.currentUser?.delete();
       
-      // Delete from Realtime Database
+      // Delete from Firestore
       await _db.deleteUser(_currentUser!.uid);
       _currentUser = null;
     } catch (e) {
       throw 'Xóa tài khoản thất bại: $e';
     }
+  }
+
+  // Delete user from Firebase Auth (admin function)
+  // Note: Firebase Auth client SDK doesn't support deleting other users.
+  // To delete users from Firebase Auth, you need to use Admin SDK on the server side.
+  // This method is a placeholder - actual deletion should be done via Admin SDK or manually from Console.
+  Future<void> deleteUserFromAuth(String uid) async {
+    // Note: Client SDK cannot delete other users from Firebase Auth.
+    // User has been deleted from Firestore, but Firebase Auth account remains.
+    // To fully delete, use Firebase Admin SDK or delete manually from Firebase Console.
+    debugPrint('Lưu ý: User đã được xóa từ Firestore nhưng vẫn còn trong Firebase Auth.');
+    debugPrint('Để xóa hoàn toàn, vui lòng sử dụng Firebase Admin SDK hoặc xóa thủ công từ Console.');
   }
 
   // Create admin user (for testing)
@@ -423,8 +446,7 @@ class FirebaseAuthService {
       // Check if email already exists
       final existingUser = await _db.getUserByEmail(email);
       if (existingUser != null) {
-        // User already exists, return it
-        return existingUser;
+        throw 'Email đã tồn tại';
       }
 
       // Create Firebase Auth user
@@ -455,36 +477,7 @@ class FirebaseAuthService {
       return user;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
-        // User exists in Auth but maybe not in Firestore, try to get it
-        try {
-          final authUser = await _auth.signInWithEmailAndPassword(
-            email: email,
-            password: password,
-          );
-          if (authUser.user != null) {
-            final existingUser = await _db.getUserByUid(authUser.user!.uid);
-            if (existingUser != null) {
-              return existingUser;
-            }
-            // Create in Firestore if not exists
-            final passwordHash = _hashPassword(password);
-            final user = AppUser(
-              uid: authUser.user!.uid,
-              email: email,
-              displayName: displayName,
-              passwordHash: passwordHash,
-              role: role,
-              createdAt: DateTime.now(),
-              lastLogin: DateTime.now(),
-            );
-            await _db.createUser(user);
-            await _auth.signOut(); // Sign out after creating
-            return user;
-          }
-        } catch (_) {
-          // Ignore
-        }
-        throw 'Email đã được sử dụng';
+        throw 'Email đã tồn tại';
       }
       throw 'Tạo người dùng thất bại: ${e.message}';
     } catch (e) {

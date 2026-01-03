@@ -38,20 +38,22 @@ void main() async {
   }
   
   // Initialize sample data (users and subjects)
-  // TẮT TỰ ĐỘNG TẠO USERS ĐỂ TRÁNH RATE LIMITING
-  // Để tạo users, admin có thể dùng chức năng "Tạo dữ liệu mẫu" trong Users Management Screen
-  // try {
-  //   await SampleDataService.instance.initializeAllSampleData();
-  // } catch (e) {
-  //   debugPrint('Error initializing sample data: $e');
-  //   // Continue anyway - app can work without sample data
-  // }
-  
-  // Chỉ tạo subjects nếu chưa có (không cần users)
+  // Kiểm tra xem đã có users chưa, nếu chưa có thì mới tạo
+  // Điều này tránh tạo lại nhiều lần và rate limiting
   try {
-    await SampleDataService.instance.initializeSampleSubjects([]);
+    final hasUsers = await SampleDataService.instance.checkSampleUsersExist();
+    if (!hasUsers) {
+      debugPrint('Chưa có users mẫu, bắt đầu tạo tất cả dữ liệu mẫu...');
+      await SampleDataService.instance.initializeAllSampleData();
+    } else {
+      debugPrint('Đã có users mẫu, chỉ kiểm tra và tạo subjects nếu chưa có...');
+      // Chỉ tạo subjects nếu chưa có
+      // initializeSampleUsers sẽ tự động bỏ qua nếu users đã tồn tại
+      await SampleDataService.instance.initializeAllSampleData();
+    }
   } catch (e) {
-    debugPrint('Error initializing sample subjects: $e');
+    debugPrint('Error initializing sample data: $e');
+    // Continue anyway - app can work without sample data
   }
   
   runApp(const MyApp());

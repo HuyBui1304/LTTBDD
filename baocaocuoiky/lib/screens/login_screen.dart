@@ -257,13 +257,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         TextButton(
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => const RegisterScreen(),
                               ),
                             );
+                            // Nếu đăng ký thành công, hiển thị thông báo ở màn hình đăng nhập
+                            if (result == true && mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Đã tạo tài khoản thành công! Bạn có thể đăng nhập ngay.'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
                           },
                           child: const Text(
                             'Đăng ký',

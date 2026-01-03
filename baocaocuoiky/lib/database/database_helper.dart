@@ -7,6 +7,7 @@ import '../models/subject.dart';
 import '../models/attendance_session.dart';
 import '../models/attendance_record.dart';
 import '../models/app_user.dart';
+import '../models/notification.dart';
 import 'firebase_database_service.dart' as firebase;
 
 // Export for convenience
@@ -35,14 +36,14 @@ class DatabaseHelper {
   Future<Subject> createSubject(Subject subject) => _firebaseService.createSubject(subject);
   Future<Subject?> getSubject(int id) => _firebaseService.getSubject(id);
   Future<List<Subject>> getAllSubjects() => _firebaseService.getAllSubjects();
-  Future<List<Subject>> getSubjectsByCreator(int creatorId) => _firebaseService.getSubjectsByCreator(creatorId);
+  Future<List<Subject>> getSubjectsByCreator(String creatorId) => _firebaseService.getSubjectsByCreator(creatorId);
   Future<int> updateSubject(Subject subject) => _firebaseService.updateSubject(subject);
   Future<int> deleteSubject(int id) => _firebaseService.deleteSubject(id);
 
   Future<AttendanceSession> createSession(AttendanceSession session) => _firebaseService.createSession(session);
   Future<AttendanceSession?> getSession(int id) => _firebaseService.getSession(id);
   Future<List<AttendanceSession>> getAllSessions() => _firebaseService.getAllSessions();
-  Future<List<AttendanceSession>> getSessionsByCreator(int creatorId) => _firebaseService.getSessionsByCreator(creatorId);
+  Future<List<AttendanceSession>> getSessionsByCreator(String creatorId) => _firebaseService.getSessionsByCreator(creatorId);
   Future<List<AttendanceSession>> getSessionsBySubject(int subjectId) => _firebaseService.getSessionsBySubject(subjectId);
   Future<int> updateSession(AttendanceSession session) => _firebaseService.updateSession(session);
   Future<int> deleteSession(int id) => _firebaseService.deleteSession(id);
@@ -99,4 +100,59 @@ class DatabaseHelper {
   Future<void> createQRScanHistory(Map<String, dynamic> historyData) => _firebaseService.createQRScanHistory(historyData);
   Future<void> createExportHistory(Map<String, dynamic> exportData) => _firebaseService.createExportHistory(exportData);
   Future<Map<String, dynamic>> exportAllData() => _firebaseService.exportAllData();
+
+  Future<AppNotification> createNotification(AppNotification notification) => _firebaseService.createNotification(notification);
+  Future<List<AppNotification>> getAllNotifications() => _firebaseService.getAllNotifications();
+  Future<List<AppNotification>> getNotificationsByRole(String? role) => _firebaseService.getNotificationsByRole(role);
+  Future<List<AppNotification>> getNotificationsByUser(String userId) => _firebaseService.getNotificationsByUser(userId);
+  Future<int> deleteNotification(String id) => _firebaseService.deleteNotification(id);
+  Future<List<AppNotification>> getNotificationsForUser({
+    required String userId,
+    required String? userRole,
+    required List<String>? userClassCodes,
+  }) => _firebaseService.getNotificationsForUser(
+    userId: userId,
+    userRole: userRole,
+    userClassCodes: userClassCodes,
+  );
+  Future<void> markNotificationAsRead(String notificationId, String userId) => _firebaseService.markNotificationAsRead(notificationId, userId);
+
+  /// Lấy tất cả students được dạy bởi một teacher
+  /// Teacher → Subjects (qua creatorId = UID) → Students (qua subjectIds)
+  Future<List<Student>> getStudentsByTeacher(String teacherUid) async {
+    try {
+      // 1. Lấy tất cả subjects của teacher
+      final subjects = await getSubjectsByCreator(teacherUid);
+      
+      if (subjects.isEmpty) {
+        return [];
+      }
+      
+      // 2. Lấy students có subjectIds chứa ID của các subjects này
+      final allStudents = <Student>[];
+      final seenStudentIds = <int>{};
+      final subjectIds = subjects.where((s) => s.id != null).map((s) => s.id.toString()).toSet();
+      
+      if (subjectIds.isEmpty) {
+        return [];
+      }
+      
+      // Lấy tất cả students và filter
+      final allStudentsList = await getAllStudents();
+      for (final student in allStudentsList) {
+        if (student.subjectIds != null && student.subjectIds!.isNotEmpty) {
+          // Kiểm tra xem student có học môn nào của teacher không
+          final hasSubject = student.subjectIds!.any((sid) => subjectIds.contains(sid));
+          if (hasSubject && student.id != null && !seenStudentIds.contains(student.id)) {
+            allStudents.add(student);
+            seenStudentIds.add(student.id!);
+          }
+        }
+      }
+      
+      return allStudents;
+    } catch (e) {
+      return [];
+    }
+  }
 }

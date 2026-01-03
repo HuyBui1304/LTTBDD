@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/app_user.dart';
 import '../widgets/state_widgets.dart' as custom;
-import '../services/sample_data_service.dart';
+import 'edit_user_screen.dart';
 
 class UsersManagementScreen extends StatefulWidget {
   final UserRole? filterRole; // Filter by role if provided
@@ -15,10 +15,8 @@ class UsersManagementScreen extends StatefulWidget {
 
 class _UsersManagementScreenState extends State<UsersManagementScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
-  final SampleDataService _sampleDataService = SampleDataService.instance;
   List<AppUser> _users = [];
   bool _isLoading = true;
-  bool _isCreatingSampleData = false;
   String _searchQuery = '';
 
   @override
@@ -79,11 +77,20 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
 
     if (confirm == true) {
       try {
+        // Xóa từ Firestore
         await _db.deleteUser(user.uid);
+        
+        // Note: Firebase Auth client SDK không thể xóa user khác
+        // Cần sử dụng Admin SDK hoặc xóa thủ công từ Console
+        // User đã được xóa từ Firestore, không thể đăng nhập nữa
+        
         await _loadUsers();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đã xóa tài khoản')),
+            const SnackBar(
+              content: Text('Đã xóa tài khoản thành công'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } catch (e) {
@@ -96,150 +103,14 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     }
   }
 
-  Future<void> _editUserRole(AppUser user) async {
-    UserRole? newRole;
-    
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Thay đổi vai trò'),
-        content: StatefulBuilder(
-          builder: (context, setState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<UserRole>(
-                  title: const Text('Quản trị viên'),
-                  value: UserRole.admin,
-                  groupValue: newRole ?? user.role,
-                  onChanged: (value) => setState(() => newRole = value),
-                ),
-                RadioListTile<UserRole>(
-                  title: const Text('Giáo viên'),
-                  value: UserRole.teacher,
-                  groupValue: newRole ?? user.role,
-                  onChanged: (value) => setState(() => newRole = value),
-                ),
-                RadioListTile<UserRole>(
-                  title: const Text('Học sinh'),
-                  value: UserRole.student,
-                  groupValue: newRole ?? user.role,
-                  onChanged: (value) => setState(() => newRole = value),
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newRole != null && newRole != user.role) {
-                Navigator.pop(context);
-                _updateUserRole(user, newRole!);
-              } else {
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Lưu'),
-          ),
-        ],
+  Future<void> _editUser(AppUser user) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditUserScreen(user: user),
       ),
     );
-  }
-
-  Future<void> _updateUserRole(AppUser user, UserRole newRole) async {
-    try {
-      final updatedUser = user.copyWith(role: newRole);
-      await _db.updateUser(updatedUser);
-      await _loadUsers();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã cập nhật vai trò')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi cập nhật: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _createSampleData() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tạo dữ liệu mẫu'),
-        content: const Text(
-          'Bạn có muốn tạo dữ liệu mẫu (1 admin, 5 teacher, 15 student, 10 môn học)?\n\n'
-          '⚠️ CẢNH BÁO:\n'
-          '• Firebase đã chặn device này do tạo/xóa quá nhiều users\n'
-          '• Nếu vẫn bị chặn, vui lòng ĐỢI 15-30 PHÚT rồi thử lại\n'
-          '• Hoặc tạo users thủ công qua Firebase Console (khuyến nghị)\n'
-          '• Quá trình này sẽ mất vài phút với delay lớn giữa các users\n\n'
-          'Xem hướng dẫn chi tiết trong file FIREBASE_RATE_LIMIT_GUIDE.md',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Vẫn tạo'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isCreatingSampleData = true);
-
-    try {
-      // Tạo users với delay lớn
-      final teachers = await _sampleDataService.initializeSampleUsers();
-      
-      // Đợi 5 giây trước khi tạo subjects
-      await Future.delayed(const Duration(seconds: 5));
-      
-      // Tạo subjects
-      await _sampleDataService.initializeSampleSubjects(teachers);
-      
-      // Reload users list
-      await _loadUsers();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã tạo dữ liệu mẫu thành công!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi tạo dữ liệu mẫu: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isCreatingSampleData = false);
-      }
-    }
+    await _loadUsers();
   }
 
   @override
@@ -248,20 +119,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       appBar: AppBar(
         title: const Text('Quản lý tài khoản'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        actions: [
-          if (widget.filterRole == null) // Chỉ hiện trong màn hình chính, không phải filter
-            IconButton(
-              icon: _isCreatingSampleData
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add_circle_outline),
-              onPressed: _isCreatingSampleData ? null : _createSampleData,
-              tooltip: 'Tạo dữ liệu mẫu',
-            ),
-        ],
       ),
       body: Column(
         children: [
@@ -337,8 +194,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.edit),
-                                      onPressed: () => _editUserRole(user),
-                                      tooltip: 'Sửa vai trò',
+                                      onPressed: () => _editUser(user),
+                                      tooltip: 'Chỉnh sửa thông tin',
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete, color: Colors.red),

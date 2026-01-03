@@ -57,8 +57,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
         sessions = await _db.getSessionsByStudentClass(student.classCode ?? '');
       } else if (role == UserRole.teacher) {
         // Teacher: Get only sessions they created
-        final userId = await _getUserId(currentUser!);
-        sessions = await _db.getSessionsByCreator(userId);
+        final teacherUid = currentUser!.uid; // Dùng UID trực tiếp
+        sessions = await _db.getSessionsByCreator(teacherUid);
       } else {
         // Admin: Get all sessions
         sessions = await _db.getAllSessions();
@@ -79,10 +79,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
   }
   
-  Future<int> _getUserId(AppUser user) async {
-    // Get numeric ID from UID (hash-based for Firebase compatibility)
-    return _db.uidToUserId(user.uid);
-  }
+  // Không cần _getUserId nữa, dùng UID trực tiếp
   
   Future<Student> _getStudentByUser(AppUser user) async {
     final allStudents = await _db.getAllStudents();

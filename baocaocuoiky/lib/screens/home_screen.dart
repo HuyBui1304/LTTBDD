@@ -12,8 +12,14 @@ import 'subjects_screen.dart';
 import 'export_screen.dart';
 import 'users_management_screen.dart';
 import 'student_attendance_screen.dart';
-import 'student_classes_screen.dart';
 import 'login_screen.dart';
+import 'admin_students_screen.dart';
+import 'admin_teachers_screen.dart';
+import 'admin_subjects_screen.dart';
+import 'add_subject_screen.dart';
+import 'add_user_screen.dart';
+import 'notifications_screen.dart';
+import 'user_notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalStudents = 0;
   int _totalSessions = 0;
   int _totalTeachers = 0;
+  int _unreadNotifications = 0;
 
   @override
   void initState() {
@@ -54,29 +61,31 @@ class _HomeScreenState extends State<HomeScreen> {
       if (role == UserRole.student) {
         // Student: Load own attendance history (only their class)
         await _loadStudentData(currentUser!);
+        await _loadNotificationsCount(currentUser);
       } else if (role == UserRole.teacher) {
-        // Teacher: Load only sessions they created
-        final userId = await _getUserId(currentUser!);
-        final sessions = await _db.getSessionsByCreator(userId);
-        final students = await _db.getAllStudents(); // Teachers can see all students
+        // Teacher: Load subjects and students they teach
+        final teacherUid = currentUser!.uid; // Dùng UID trực tiếp
+        final subjects = await _db.getSubjectsByCreator(teacherUid);
+        final students = await _db.getStudentsByTeacher(teacherUid); // Chỉ xem students mà teacher dạy
 
         if (mounted) {
           setState(() {
             _totalStudents = students.length;
-            _totalSessions = sessions.length;
+            _totalSessions = subjects.length; // Số môn học
             _isLoading = false;
           });
         }
+        await _loadNotificationsCount(currentUser);
       } else {
         // Admin: Load all data
         final students = await _db.getAllStudents();
-        final sessions = await _db.getAllSessions();
+        final subjects = await _db.getAllSubjects();
         final teachers = await _db.getUsersByRole(UserRole.teacher);
 
         if (mounted) {
           setState(() {
             _totalStudents = students.length;
-            _totalSessions = sessions.length;
+            _totalSessions = subjects.length; // Số môn học
             _totalTeachers = teachers.length;
             _isLoading = false;
           });
@@ -127,11 +136,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<int> _getUserId(AppUser user) async {
-    final dbUser = await _db.getUserByUid(user.uid);
-    if (dbUser == null) throw Exception('User not found in database');
-    // Get numeric ID from UID (hash-based for Firebase compatibility)
-    return _db.uidToUserId(user.uid);
+  // Không cần _getUserId nữa, dùng UID trực tiếp
+
+  Future<void> _loadNotificationsCount(AppUser user) async {
+    try {
+      // Lấy classCodes của user
+      List<String>? userClassCodes;
+      
+      if (user.role == UserRole.student) {
+        // Student: Lấy classCodes từ subjects mà student học
+        final allStudents = await _db.getAllStudents();
+        final student = allStudents.firstWhere(
+          (s) => s.email.toLowerCase() == user.email.toLowerCase(),
+          orElse: () => throw Exception('Không tìm thấy thông tin học sinh'),
+        );
+        
+        if (student.subjectIds != null && student.subjectIds!.isNotEmpty) {
+          final allSubjects = await _db.getAllSubjects();
+          userClassCodes = allSubjects
+              .where((s) => student.subjectIds!.contains(s.id.toString()))
+              .map((s) => s.classCode)
+              .toList();
+        }
+      } else if (user.role == UserRole.teacher) {
+        // Teacher: Lấy classCodes từ subjects mà teacher dạy
+        final subjects = await _db.getSubjectsByCreator(user.uid);
+        userClassCodes = subjects.map((s) => s.classCode).toList();
+      }
+      
+      final notifications = await _db.getNotificationsForUser(
+        userId: user.uid,
+        userRole: user.role.name,
+        userClassCodes: userClassCodes,
+      );
+      
+      final unreadCount = notifications.where((n) {
+        return n.readBy == null || !n.readBy!.contains(user.uid);
+      }).length;
+      
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = unreadCount;
+        });
+      }
+    } catch (e) {
+      debugPrint('Lỗi khi tải số thông báo: $e');
+    }
   }
 
   @override
@@ -374,22 +424,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
         ),
       ),
-      floatingActionButton: Consumer<AuthProvider>(
-        builder: (context, authProvider, _) {
-          final role = authProvider.currentUser?.role;
-          
-          // Only show FAB for Admin/Teacher
-          if (role == UserRole.student) {
-            return const SizedBox.shrink();
-          }
-          
-          return FloatingActionButton.extended(
-            onPressed: () => _navigateToSessions(),
-            icon: const Icon(Icons.add),
-            label: const Text('Quản lý môn học'),
-          );
-        },
-      ),
     );
   }
 
@@ -415,18 +449,68 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _navigateToTeachers() {
+  void _navigateToAdminStudents() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => UsersManagementScreen(filterRole: UserRole.teacher),
-      ),
+      MaterialPageRoute(builder: (context) => const AdminStudentsScreen()),
     ).then((_) {
       if (mounted) {
         _loadData();
       }
     });
   }
+
+  void _navigateToAdminTeachers() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AdminTeachersScreen()),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
+  }
+
+  void _navigateToAdminSubjects() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AdminSubjectsScreen()),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
+  }
+
+  void _navigateToAddSubject() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AddSubjectScreen()),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
+  }
+
+  void _navigateToAddUser() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AddUserScreen()),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
+  }
+
+  void _navigateToNotifications() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+    );
+  }
+
 
   // Build student home interface
   Widget _buildStudentHome(BuildContext context) {
@@ -494,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // Lớp học button
+          // Thông báo card
           Card(
             elevation: 2,
             child: InkWell(
@@ -502,7 +586,106 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const StudentClassesScreen(),
+                    builder: (context) => const UserNotificationsScreen(),
+                  ),
+                ).then((_) {
+                  if (mounted) {
+                    final authProvider = context.read<AuthProvider>();
+                    final currentUser = authProvider.currentUser;
+                    if (currentUser != null) {
+                      _loadNotificationsCount(currentUser);
+                    }
+                  }
+                });
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Row(
+                  children: [
+                    Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.notifications,
+                            size: 40,
+                            color: Colors.red,
+                          ),
+                        ),
+                        if (_unreadNotifications > 0)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 20,
+                                minHeight: 20,
+                              ),
+                              child: Text(
+                                _unreadNotifications > 99 ? '99+' : '$_unreadNotifications',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Thông báo',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _unreadNotifications > 0
+                                ? '$_unreadNotifications thông báo chưa đọc'
+                                : 'Không có thông báo mới',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Môn học card
+          Card(
+            elevation: 2,
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SubjectsScreen(),
                   ),
                 );
               },
@@ -518,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
-                        Icons.class_,
+                        Icons.book,
                         size: 40,
                         color: Colors.blue,
                       ),
@@ -529,14 +712,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Lớp học',
+                            'Môn học',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Xem lịch sử điểm danh',
+                            'Xem các môn học của tôi',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
@@ -561,61 +744,83 @@ class _HomeScreenState extends State<HomeScreen> {
   // Build stats cards based on role
   Widget _buildStatsCards(BuildContext context, UserRole? role) {
     if (role == UserRole.teacher) {
-      // Teacher: Show management stats
+      // Teacher: Show management stats (similar to admin but without some cards)
       return LayoutBuilder(
         builder: (context, constraints) {
           final isTablet = constraints.maxWidth >= 600;
           if (isTablet) {
-            return Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    title: 'Sinh viên',
-                    value: '',
-                    icon: Icons.people_outline,
-                    color: Colors.blue,
-                    onTap: () => _navigateToStudents(),
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      title: 'Sinh viên',
+                      value: '$_totalStudents',
+                      icon: Icons.people_outline,
+                      color: Colors.blue,
+                      onTap: () => _navigateToAdminStudents(),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    title: 'Quản lý môn học',
-                    value: '',
-                    icon: Icons.event_note,
-                    color: Colors.green,
-                    onTap: () => _navigateToSessions(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      title: 'Môn học',
+                      value: '$_totalSessions',
+                      icon: Icons.book,
+                      color: Colors.green,
+                      onTap: () => _navigateToAdminSubjects(),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           } else {
-            return Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Sinh viên',
-                        value: '$_totalStudents',
-                        icon: Icons.people_outline,
-                        color: Colors.blue,
-                        onTap: () => _navigateToStudents(),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Quản lý môn học',
-                        value: '$_totalSessions',
-                        icon: Icons.event_note,
-                        color: Colors.green,
-                        onTap: () => _navigateToSessions(),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Column(
+                children: [
+                  _StatCard(
+                    title: 'Sinh viên',
+                    value: '$_totalStudents',
+                    icon: Icons.people_outline,
+                    color: Colors.blue,
+                    onTap: () => _navigateToAdminStudents(),
+                  ),
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Môn học',
+                    value: '$_totalSessions',
+                    icon: Icons.book,
+                    color: Colors.green,
+                    onTap: () => _navigateToAdminSubjects(),
+                  ),
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Thông báo',
+                    value: _unreadNotifications > 0 ? '$_unreadNotifications' : '',
+                    icon: Icons.notifications,
+                    color: Colors.red,
+                    badgeCount: _unreadNotifications > 0 ? _unreadNotifications : null,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UserNotificationsScreen(),
+                        ),
+                      ).then((_) {
+                        if (mounted) {
+                          final authProvider = context.read<AuthProvider>();
+                          final currentUser = authProvider.currentUser;
+                          if (currentUser != null) {
+                            _loadNotificationsCount(currentUser);
+                          }
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
             );
           }
         },
@@ -626,75 +831,96 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, constraints) {
           final isTablet = constraints.maxWidth >= 600;
           if (isTablet) {
-            return Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      title: 'Sinh viên',
+                      value: '$_totalStudents',
+                      icon: Icons.people_outline,
+                      color: Colors.blue,
+                      onTap: () => _navigateToAdminStudents(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      title: 'Giáo viên',
+                      value: '$_totalTeachers',
+                      icon: Icons.school,
+                      color: Colors.purple,
+                      onTap: () => _navigateToAdminTeachers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      title: 'Môn học',
+                      value: '$_totalSessions',
+                      icon: Icons.book,
+                      color: Colors.green,
+                      onTap: () => _navigateToAdminSubjects(),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Column(
+                children: [
+                  _StatCard(
                     title: 'Sinh viên',
                     value: '$_totalStudents',
                     icon: Icons.people_outline,
                     color: Colors.blue,
-                    onTap: () => _navigateToStudents(),
+                    onTap: () => _navigateToAdminStudents(),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
+                  const SizedBox(height: 12),
+                  _StatCard(
                     title: 'Giáo viên',
                     value: '$_totalTeachers',
                     icon: Icons.school,
                     color: Colors.purple,
-                    onTap: () => _navigateToTeachers(),
+                    onTap: () => _navigateToAdminTeachers(),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    title: 'Quản lý môn học',
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Môn học',
                     value: '$_totalSessions',
-                    icon: Icons.event_note,
+                    icon: Icons.book,
                     color: Colors.green,
-                    onTap: () => _navigateToSessions(),
+                    onTap: () => _navigateToAdminSubjects(),
                   ),
-                ),
-              ],
-            );
-          } else {
-            return Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Sinh viên',
-                        value: '$_totalStudents',
-                        icon: Icons.people_outline,
-                        color: Colors.blue,
-                        onTap: () => _navigateToStudents(),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        title: 'Giáo viên',
-                        value: '$_totalTeachers',
-                        icon: Icons.school,
-                        color: Colors.purple,
-                        onTap: () => _navigateToTeachers(),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _StatCard(
-                  title: 'Quản lý môn học',
-                  value: '',
-                  icon: Icons.event_note,
-                  color: Colors.green,
-                  fullWidth: true,
-                  onTap: () => _navigateToSessions(),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Thêm môn học',
+                    value: '',
+                    icon: Icons.add_circle_outline,
+                    color: Colors.orange,
+                    onTap: () => _navigateToAddSubject(),
+                  ),
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Thêm tài khoản',
+                    value: '',
+                    icon: Icons.person_add,
+                    color: Colors.teal,
+                    onTap: () => _navigateToAddUser(),
+                  ),
+                  const SizedBox(height: 12),
+                  _StatCard(
+                    title: 'Thông báo',
+                    value: '',
+                    icon: Icons.notifications,
+                    color: Colors.red,
+                    onTap: () => _navigateToNotifications(),
+                  ),
+                ],
+              ),
             );
           }
         },
@@ -709,59 +935,115 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  final bool fullWidth;
   final VoidCallback? onTap;
+  final int? badgeCount; // Số thông báo chưa đọc
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
-    this.fullWidth = false,
     this.onTap,
+    this.badgeCount,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+    return SizedBox(
+      width: double.infinity,
+      child: Card(
+        elevation: 2,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Stack(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 32,
+                        color: color,
+                      ),
+                    ),
+                    if (badgeCount != null && badgeCount! > 0)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            badgeCount! > 99 ? '99+' : '$badgeCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 12),
-              if (value.isNotEmpty) ...[
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-              ),
-              const SizedBox(height: 4),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      if (value.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          value,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                              ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color:
+                      Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ],
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 }
-

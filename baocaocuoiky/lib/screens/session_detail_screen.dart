@@ -39,7 +39,17 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     setState(() => _isLoading = true);
     try {
       final records = await _db.getRecordsBySession(widget.session.id!);
-      final students = await _db.getStudentsByClass(widget.session.classCode);
+      
+      // Lấy students theo subjectId (những student có subjectIds chứa session.subjectId)
+      final allStudents = await _db.getAllStudents();
+      final students = allStudents.where((student) {
+        if (student.subjectIds == null || student.subjectIds!.isEmpty) {
+          return false;
+        }
+        // Kiểm tra xem student có học môn này không (subjectIds chứa session.subjectId)
+        return student.subjectIds!.contains(widget.session.subjectId.toString());
+      }).toList();
+      
       final stats = await _db.getSessionStats(widget.session.id!);
 
       setState(() {
@@ -58,7 +68,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     }
   }
 
-  void _showAttendanceDialog(Student student) {
+  void _showQuickAttendanceDialog(Student student) {
     // Check if student already has attendance record
     final existingRecord = _records.firstWhere(
       (r) => r.studentId == student.id,
@@ -68,95 +78,82 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
       ),
     );
 
-    AttendanceStatus selectedStatus = existingRecord.status;
-    final noteController = TextEditingController(text: existingRecord.note);
-
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Điểm danh - ${student.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...AttendanceStatus.values.map((status) => RadioListTile<AttendanceStatus>(
-                    title: Row(
-                      children: [
-                        Icon(
-                          _getStatusIcon(status),
-                          color: _getStatusColor(status),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(status.displayName),
-                      ],
-                    ),
-                    value: status,
-                    groupValue: selectedStatus,
-                    onChanged: (value) {
-                      setDialogState(() => selectedStatus = value!);
-                    },
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  )),
-              const SizedBox(height: 16),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(
-                  labelText: 'Ghi chú (tùy chọn)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.note),
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Hủy'),
+      builder: (context) => AlertDialog(
+        title: Text('Điểm danh - ${student.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 4 options: Có mặt, Muộn, Vắng, Có phép
+            ListTile(
+              leading: Icon(Icons.check_circle, color: Colors.green),
+              title: const Text('Có mặt'),
+              onTap: () => _saveAttendance(student, existingRecord, AttendanceStatus.present),
             ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  final record = AttendanceRecord(
-                    id: existingRecord.id,
-                    sessionId: widget.session.id!,
-                    studentId: student.id!,
-                    status: selectedStatus,
-                    checkInTime: DateTime.now(),
-                    note: noteController.text.trim().isEmpty
-                        ? null
-                        : noteController.text.trim(),
-                  );
-
-                  if (existingRecord.id != null) {
-                    await _db.updateRecord(record);
-                  } else {
-                    await _db.createRecord(record);
-                  }
-
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Điểm danh thành công')),
-                    );
-                  }
-                  _loadData();
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Lỗi: $e')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Lưu'),
+            const Divider(),
+            ListTile(
+              leading: Icon(Icons.access_time, color: Colors.orange),
+              title: const Text('Muộn'),
+              onTap: () => _saveAttendance(student, existingRecord, AttendanceStatus.late),
+            ),
+            const Divider(),
+            ListTile(
+              leading: Icon(Icons.cancel, color: Colors.red),
+              title: const Text('Vắng'),
+              onTap: () => _saveAttendance(student, existingRecord, AttendanceStatus.absent),
+            ),
+            const Divider(),
+            ListTile(
+              leading: Icon(Icons.info, color: Colors.blue),
+              title: const Text('Có phép'),
+              onTap: () => _saveAttendance(student, existingRecord, AttendanceStatus.excused),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+        ],
       ),
     );
+  }
+  
+  Future<void> _saveAttendance(Student student, AttendanceRecord existingRecord, AttendanceStatus status) async {
+    try {
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+      
+      final record = AttendanceRecord(
+        id: existingRecord.id,
+        sessionId: widget.session.id!,
+        studentId: student.id!,
+        status: status,
+        checkInTime: DateTime.now(),
+      );
+
+      if (existingRecord.id != null) {
+        await _db.updateRecord(record);
+      } else {
+        await _db.createRecord(record);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đã điểm danh: ${status.displayName}')),
+        );
+      }
+      _loadData();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e')),
+        );
+      }
+    }
   }
 
   void _showQuickAttendanceAll() {
@@ -373,8 +370,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                               icon: Icons.calendar_today,
                               label: 'Ngày giờ',
                               value: widget.session.sessionDate != null
-                                  ? DateFormat('EEEE, dd/MM/yyyy HH:mm', 'vi_VN')
-                                      .format(widget.session.sessionDate!)
+                                  ? '${DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(widget.session.sessionDate!)} - 7h30 - 11h30'
                                   : 'Chưa có ngày',
                             ),
                             if (widget.session.location != null)
@@ -394,8 +390,8 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                       ),
                     ),
 
-                    // Statistics - Only for Admin/Teacher
-                    if (!isStudent && _stats != null && _stats!.isNotEmpty) ...[
+                    // Statistics - Only for Admin/Teacher (chỉ hiển thị nếu session đã diễn ra)
+                    if (!isStudent && _isSessionCompleted() && _stats != null && _stats!.isNotEmpty) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         child: Text(
@@ -406,6 +402,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
+                      const SizedBox(height: 12),
                       const SizedBox(height: 12),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -454,7 +451,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                       ),
                     ],
 
-                    // Students List - Only for Admin/Teacher
+                    // Students List - Always show for Admin/Teacher
                     if (!isStudent) ...[
                       const SizedBox(height: 24),
                     Padding(
@@ -542,26 +539,39 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                                   ),
                                   subtitle: Text(student.studentId),
                                   trailing: hasAttended
-                                      ? Chip(
-                                          label: Text(
-                                            record.status.displayName,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: _getStatusColor(
-                                                  record.status),
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Chip(
+                                              label: Text(
+                                                record.status.displayName,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: _getStatusColor(
+                                                      record.status),
+                                                ),
+                                              ),
+                                              backgroundColor: _getStatusColor(
+                                                      record.status)
+                                                  .withOpacity(0.1),
+                                              side: BorderSide.none,
                                             ),
-                                          ),
-                                          backgroundColor: _getStatusColor(
-                                                  record.status)
-                                              .withOpacity(0.1),
-                                          side: BorderSide.none,
+                                            const SizedBox(width: 8),
+                                            IconButton(
+                                              icon: const Icon(Icons.edit, size: 20),
+                                              onPressed: () => _showQuickAttendanceDialog(student),
+                                              tooltip: 'Chỉnh sửa',
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                            ),
+                                          ],
                                         )
                                       : TextButton(
                                           onPressed: () =>
-                                              _showAttendanceDialog(student),
+                                              _showQuickAttendanceDialog(student),
                                           child: const Text('Điểm danh'),
                                         ),
-                                  onTap: () => _showAttendanceDialog(student),
+                                  onTap: null, // Bỏ click để xem chi tiết
                                 ),
                               );
                             },
@@ -615,6 +625,47 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         );
       },
     );
+  }
+
+  bool _isSessionCompleted() {
+    // Session đã diễn ra nếu:
+    // 1. Status là completed
+    // 2. Có attendance records
+    // 3. Đã qua 11h30 của ngày session (tự động đánh dấu)
+    if (widget.session.status == SessionStatus.completed || _records.isNotEmpty) {
+      return true;
+    }
+    
+    // Kiểm tra nếu đã qua 11h30 của ngày session
+    if (widget.session.sessionDate != null) {
+      final sessionEndTime = DateTime(
+        widget.session.sessionDate!.year,
+        widget.session.sessionDate!.month,
+        widget.session.sessionDate!.day,
+        11, // 11h30
+        30,
+      );
+      if (DateTime.now().isAfter(sessionEndTime)) {
+        // Tự động cập nhật status nếu chưa được cập nhật
+        if (widget.session.status == SessionStatus.scheduled) {
+          _autoCompleteSession();
+        }
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  Future<void> _autoCompleteSession() async {
+    try {
+      final updatedSession = widget.session.copyWith(status: SessionStatus.completed);
+      await _db.updateSession(updatedSession);
+      // Reload data để cập nhật UI
+      _loadData();
+    } catch (e) {
+      debugPrint('Lỗi khi tự động đánh dấu session đã diễn ra: $e');
+    }
   }
 
   Color _getSessionStatusColor(SessionStatus status) {

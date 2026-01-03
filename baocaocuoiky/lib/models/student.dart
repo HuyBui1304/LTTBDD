@@ -4,7 +4,8 @@ class Student {
   final String name;
   final String email;
   final String? phone;
-  final String? classCode; // Mã lớp
+  final String? classCode; // Mã lớp (deprecated, dùng subjectIds)
+  final List<String>? subjectIds; // Danh sách ID môn học mà student đăng ký
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -14,7 +15,8 @@ class Student {
     required this.name,
     required this.email,
     this.phone,
-    this.classCode,
+    this.classCode, // Deprecated, dùng subjectIds
+    this.subjectIds, // Danh sách ID môn học
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : createdAt = createdAt ?? DateTime.now(),
@@ -29,6 +31,7 @@ class Student {
       'email': email,
       'phone': phone,
       'classCode': classCode,
+      'subjectIds': subjectIds, // Danh sách ID môn học
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -43,6 +46,9 @@ class Student {
       email: map['email'] as String,
       phone: map['phone'] as String?,
       classCode: map['classCode'] as String?,
+      subjectIds: map['subjectIds'] != null 
+          ? List<String>.from(map['subjectIds'] as List)
+          : null,
       createdAt: DateTime.parse(map['createdAt'] as String),
       updatedAt: DateTime.parse(map['updatedAt'] as String),
     );
@@ -56,6 +62,7 @@ class Student {
     String? email,
     String? phone,
     String? classCode,
+    List<String>? subjectIds,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -66,6 +73,7 @@ class Student {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       classCode: classCode ?? this.classCode,
+      subjectIds: subjectIds ?? this.subjectIds,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

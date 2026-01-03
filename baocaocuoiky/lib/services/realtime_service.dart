@@ -59,20 +59,20 @@ class RealtimeNotificationService {
       if (snapshot.docs.isEmpty) return;
       
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final sessionMap = Map<String, dynamic>.from(doc.data() as Map);
-          final session = AttendanceSession.fromMap(sessionMap);
-          
-          // Check if session should be auto-completed
-          if (session.sessionDate != null &&
-              session.status == SessionStatus.scheduled &&
-              session.sessionDate!.isBefore(DateTime.now().subtract(const Duration(hours: 2)))) {
-            // Auto-complete in background
-            _autoCompleteSession(session);
+            final session = AttendanceSession.fromMap(sessionMap);
+            
+            // Check if session should be auto-completed
+            if (session.sessionDate != null &&
+                session.status == SessionStatus.scheduled &&
+                session.sessionDate!.isBefore(DateTime.now().subtract(const Duration(hours: 2)))) {
+              // Auto-complete in background
+              _autoCompleteSession(session);
+            }
+          } catch (e) {
+            debugPrint('Error processing session update: $e');
           }
-        } catch (e) {
-          debugPrint('Error processing session update: $e');
-        }
       }
     } catch (e) {
       debugPrint('Error processing session updates: $e');

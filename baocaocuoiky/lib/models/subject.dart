@@ -4,7 +4,7 @@ class Subject {
   final String subjectName; // Tên môn học
   final String classCode; // Mã lớp học phần
   final String? description;
-  final int? creatorId; // ID người tạo (teacher)
+  final String? creatorId; // UID của teacher (người tạo/quản lý môn học)
   final DateTime createdAt;
   final DateTime updatedAt;
   
@@ -17,7 +17,7 @@ class Subject {
     required this.subjectName,
     required this.classCode,
     this.description,
-    this.creatorId,
+    this.creatorId, // UID của teacher
     this.creatorName,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -46,7 +46,7 @@ class Subject {
       subjectName: map['subjectName'] as String,
       classCode: map['classCode'] as String,
       description: map['description'] as String?,
-      creatorId: map['creatorId'] as int?,
+      creatorId: map['creatorId'] as String?, // UID của teacher
       creatorName: map['creatorName'] as String?,
       createdAt: DateTime.parse(map['createdAt'] as String),
       updatedAt: DateTime.parse(map['updatedAt'] as String),
@@ -60,7 +60,7 @@ class Subject {
     String? subjectName,
     String? classCode,
     String? description,
-    int? creatorId,
+    String? creatorId, // UID của teacher
     String? creatorName,
     DateTime? createdAt,
     DateTime? updatedAt,

@@ -73,25 +73,31 @@ class AuthProvider with ChangeNotifier {
     required String email,
     required String password,
     required String displayName,
+    bool autoLogin = false, // Mặc định không tự động đăng nhập
   }) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      _currentUser = await _authService.registerWithEmailPassword(
+      final newUser = await _authService.registerWithEmailPassword(
         email: email,
         password: password,
         displayName: displayName,
       );
 
-      if (_currentUser != null) {
-        await _saveSession(_currentUser!.uid);
+      // Chỉ tự động đăng nhập nếu autoLogin = true
+      if (autoLogin && newUser != null) {
+        _currentUser = newUser;
+        await _saveSession(newUser.uid);
+      } else {
+        // Không tự động đăng nhập, chỉ tạo tài khoản
+        _currentUser = null;
       }
 
       _isLoading = false;
       notifyListeners();
-      return _currentUser != null;
+      return newUser != null;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;

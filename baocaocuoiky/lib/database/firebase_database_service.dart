@@ -1,11 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import '../models/student.dart';
 import '../models/attendance_session.dart';
 import '../models/attendance_record.dart';
 import '../models/app_user.dart';
 import '../models/subject.dart';
+import '../models/notification.dart';
 import 'package:crypto/crypto.dart' show sha256;
+import 'package:cloud_firestore/cloud_firestore.dart' show Query;
 
 class Crypto {
   String hashPassword(String password) {
@@ -206,6 +209,11 @@ class FirebaseDatabaseService {
       for (var doc in snapshot.docs) {
         try {
           final data = doc.data() as Map<String, dynamic>;
+          // Set id from document ID if not present in data
+          final subjectId = data['id'] as int? ?? int.tryParse(doc.id);
+          if (subjectId != null) {
+            data['id'] = subjectId;
+          }
           subjects.add(Subject.fromMap(data));
         } catch (e) {
           // Skip invalid entries
@@ -219,7 +227,7 @@ class FirebaseDatabaseService {
     }
   }
 
-  Future<List<Subject>> getSubjectsByCreator(int creatorId) async {
+  Future<List<Subject>> getSubjectsByCreator(String creatorId) async {
     try {
       final snapshot = await _collection('subjects')
           .where('creatorId', isEqualTo: creatorId)
@@ -229,6 +237,11 @@ class FirebaseDatabaseService {
       for (var doc in snapshot.docs) {
         try {
           final data = doc.data() as Map<String, dynamic>;
+          // Set id from document ID if not present in data
+          final subjectId = data['id'] as int? ?? int.tryParse(doc.id);
+          if (subjectId != null) {
+            data['id'] = subjectId;
+          }
           subjects.add(Subject.fromMap(data));
         } catch (e) {
           // Skip invalid entries
@@ -329,7 +342,7 @@ class FirebaseDatabaseService {
     }
   }
 
-  Future<List<AttendanceSession>> getSessionsByCreator(int creatorId) async {
+  Future<List<AttendanceSession>> getSessionsByCreator(String creatorId) async {
     try {
       final snapshot = await _collection('attendance_sessions')
           .where('creatorId', isEqualTo: creatorId)
@@ -353,9 +366,9 @@ class FirebaseDatabaseService {
 
   Future<List<AttendanceSession>> getSessionsBySubject(int subjectId) async {
     try {
+      // Query without orderBy to avoid composite index requirement
       final snapshot = await _collection('attendance_sessions')
           .where('subjectId', isEqualTo: subjectId)
-          .orderBy('createdAt', descending: true)
           .get();
       
       final List<AttendanceSession> sessions = [];
@@ -367,8 +380,13 @@ class FirebaseDatabaseService {
           // Skip invalid entries
         }
       }
+      
+      // Sort by sessionNumber after fetching
+      sessions.sort((a, b) => a.sessionNumber.compareTo(b.sessionNumber));
+      
       return sessions;
     } catch (e) {
+      debugPrint('Error getting sessions by subject: $e');
       return [];
     }
   }
@@ -700,7 +718,15 @@ class FirebaseDatabaseService {
 
   Future<int> deleteUser(String uid) async {
     try {
+      // Xóa từ Firestore
       await _collection('users').doc(uid).delete();
+      
+      // Note: Để xóa user từ Firebase Auth, cần sử dụng Admin SDK
+      // hoặc user phải tự xóa tài khoản của mình.
+      // Ở đây chỉ xóa từ Firestore, user trong Firebase Auth sẽ vẫn tồn tại
+      // nhưng không thể đăng nhập vì không có thông tin trong Firestore.
+      // Để xóa hoàn toàn, cần cấu hình Firebase Admin SDK hoặc xóa thủ công từ Console.
+      
       return 1;
     } catch (e) {
       throw 'Xóa người dùng thất bại: $e';
@@ -1011,6 +1037,198 @@ class FirebaseDatabaseService {
       };
     } catch (e) {
       throw 'Xuất dữ liệu thất bại: $e';
+    }
+  }
+
+  // ========== NOTIFICATION OPERATIONS ==========
+
+  Future<AppNotification> createNotification(AppNotification notification) async {
+    try {
+      final notificationsRef = _collection('notifications');
+      final docRef = await notificationsRef.add(notification.toMap());
+      return notification.copyWith(id: docRef.id);
+    } catch (e) {
+      throw 'Tạo thông báo thất bại: $e';
+    }
+  }
+
+  Future<List<AppNotification>> getAllNotifications() async {
+    try {
+      final snapshot = await _collection('notifications')
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return AppNotification.fromMap(data, doc.id);
+      }).toList();
+    } catch (e) {
+      debugPrint('Lỗi khi lấy thông báo: $e');
+      return [];
+    }
+  }
+
+  Future<List<AppNotification>> getNotificationsByRole(String? role) async {
+    try {
+      Query query = _collection('notifications');
+      
+      if (role != null) {
+        query = query.where('targetRole', isEqualTo: role);
+      } else {
+        query = query.where('targetRole', isNull: true);
+      }
+      
+      final snapshot = await query
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return AppNotification.fromMap(data, doc.id);
+      }).toList();
+    } catch (e) {
+      debugPrint('Lỗi khi lấy thông báo theo role: $e');
+      return [];
+    }
+  }
+
+  Future<List<AppNotification>> getNotificationsByUser(String userId) async {
+    try {
+      final snapshot = await _collection('notifications')
+          .where('targetUserId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return AppNotification.fromMap(data, doc.id);
+      }).toList();
+    } catch (e) {
+      debugPrint('Lỗi khi lấy thông báo theo user: $e');
+      return [];
+    }
+  }
+
+  Future<int> deleteNotification(String id) async {
+    try {
+      await _collection('notifications').doc(id).delete();
+      return 1;
+    } catch (e) {
+      throw 'Xóa thông báo thất bại: $e';
+    }
+  }
+
+  Future<List<AppNotification>> getNotificationsForUser({
+    required String userId,
+    required String? userRole,
+    required List<String>? userClassCodes, // Danh sách classCode mà user liên quan
+  }) async {
+    try {
+      // Lấy tất cả thông báo
+      final allNotifications = await getAllNotifications();
+      
+      final relevantNotifications = <AppNotification>[];
+      
+      for (final notification in allNotifications) {
+        bool isRelevant = false;
+        
+        // 0. Người tạo luôn thấy thông báo của mình (để quản lý)
+        if (notification.createdBy == userId) {
+          isRelevant = true;
+        }
+        // 1. Thông báo gửi đến user cụ thể
+        else if (notification.targetUserId == userId) {
+          isRelevant = true;
+        }
+        // 2. Thông báo gửi đến role của user
+        else if (notification.targetRole != null && notification.targetRole == userRole) {
+          // Nếu có targetClassCode, kiểm tra user có liên quan đến class đó không
+          if (notification.targetClassCode != null) {
+            if (userClassCodes != null && userClassCodes.contains(notification.targetClassCode)) {
+              isRelevant = true;
+            }
+          } else {
+            // Không có classCode
+            // Nếu người tạo là giáo viên (teacher), chỉ gửi đến các lớp mà giáo viên đó dạy
+            // Kiểm tra xem người tạo có phải là giáo viên không
+            try {
+              final creator = await getUserByUid(notification.createdBy);
+              if (creator?.role.name == 'teacher') {
+                // Lấy các lớp mà giáo viên này dạy
+                final teacherSubjects = await getSubjectsByCreator(notification.createdBy);
+                final teacherClassCodes = teacherSubjects.map((s) => s.classCode).toSet();
+                
+                debugPrint('🔔 Thông báo từ giáo viên ${notification.createdBy}');
+                debugPrint('   - Các lớp giáo viên dạy: $teacherClassCodes');
+                debugPrint('   - Các lớp user liên quan: $userClassCodes');
+                
+                // Chỉ hiển thị nếu user có lớp trong danh sách lớp của giáo viên
+                if (teacherClassCodes.isNotEmpty) {
+                  if (userClassCodes != null && userClassCodes.isNotEmpty) {
+                    // Kiểm tra xem có ít nhất một classCode của user nằm trong danh sách lớp của giáo viên
+                    final hasMatchingClass = userClassCodes.any((code) => teacherClassCodes.contains(code));
+                    debugPrint('   - Có lớp trùng khớp: $hasMatchingClass');
+                    if (hasMatchingClass) {
+                      isRelevant = true;
+                    }
+                  } else {
+                    debugPrint('   - ⚠️ userClassCodes null hoặc rỗng');
+                  }
+                } else {
+                  debugPrint('   - ⚠️ Giáo viên chưa có lớp học nào');
+                }
+              } else {
+                // Không phải giáo viên, gửi đến tất cả user có role đó
+                isRelevant = true;
+              }
+            } catch (e) {
+              debugPrint('❌ Lỗi khi kiểm tra creator trong getNotificationsForUser: $e');
+              // Nếu không lấy được thông tin creator, mặc định gửi đến tất cả
+              isRelevant = true;
+            }
+          }
+        }
+        // 3. Thông báo gửi đến lớp học mà user liên quan
+        else if (notification.targetClassCode != null && userClassCodes != null) {
+          if (userClassCodes.contains(notification.targetClassCode)) {
+            isRelevant = true;
+          }
+        }
+        // 4. Thông báo gửi đến tất cả (không có targetRole, targetUserId, targetClassCode)
+        else if (notification.targetRole == null && 
+                 notification.targetUserId == null && 
+                 notification.targetClassCode == null) {
+          isRelevant = true;
+        }
+        
+        if (isRelevant) {
+          relevantNotifications.add(notification);
+        }
+      }
+      
+      return relevantNotifications;
+    } catch (e) {
+      debugPrint('Lỗi khi lấy thông báo cho user: $e');
+      return [];
+    }
+  }
+
+  Future<void> markNotificationAsRead(String notificationId, String userId) async {
+    try {
+      final notificationRef = _collection('notifications').doc(notificationId);
+      final doc = await notificationRef.get();
+      
+      if (!doc.exists) return;
+      
+      final data = doc.data() as Map<String, dynamic>;
+      final readBy = List<String>.from(data['readBy'] ?? []);
+      
+      if (!readBy.contains(userId)) {
+        readBy.add(userId);
+        await notificationRef.update({'readBy': readBy});
+      }
+    } catch (e) {
+      debugPrint('Lỗi khi đánh dấu đã đọc: $e');
     }
   }
 }
