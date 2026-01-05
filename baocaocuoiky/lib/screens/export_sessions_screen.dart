@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../database/database_helper.dart';
 import '../models/subject.dart';
 import '../models/attendance_session.dart';
@@ -81,9 +82,43 @@ class _ExportSessionsScreenState extends State<ExportSessionsScreen> {
   }
 
   Future<void> _showExportOptions(Subject subject) async {
-    // Lấy tất cả sessions của môn học
-    final sessions = await _db.getAllSessions();
-    final subjectSessions = sessions.where((s) => s.subjectId == subject.id).toList();
+    // Reload sessions from server to ensure latest data
+    if (subject.id == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Môn học không hợp lệ')),
+        );
+      }
+      return;
+    }
+    
+    // Show loading while fetching
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    
+    List<AttendanceSession> subjectSessions = [];
+    try {
+      // Force reload from server
+      debugPrint('🔄 [ExportSessionsScreen] Loading sessions for subject: ${subject.subjectName} (ID: ${subject.id})');
+      subjectSessions = await _db.getSessionsBySubject(subject.id!);
+      debugPrint('📊 [ExportSessionsScreen] Loaded ${subjectSessions.length} sessions for subject: ${subject.subjectName}');
+    } catch (e) {
+      debugPrint('❌ [ExportSessionsScreen] Error loading sessions: $e');
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi tải dữ liệu: $e')),
+        );
+      }
+      return;
+    }
+    
+    if (mounted) {
+      Navigator.pop(context); // Close loading
+    }
 
     if (subjectSessions.isEmpty) {
       if (mounted) {
@@ -94,36 +129,37 @@ class _ExportSessionsScreenState extends State<ExportSessionsScreen> {
       return;
     }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Xuất dữ liệu - ${subject.subjectName}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Môn học có ${subjectSessions.length} buổi học'),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.all_inclusive),
-              title: const Text('Xuất toàn bộ'),
-              subtitle: const Text('Tất cả các buổi học của môn này'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportAllSessions(subject, subjectSessions);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.list),
-              title: const Text('Chọn buổi học cụ thể'),
-              subtitle: const Text('Chọn từng buổi để xuất'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSessionSelection(subject, subjectSessions);
-              },
-            ),
-          ],
-        ),
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Xuất dữ liệu - ${subject.subjectName}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Môn học có ${subjectSessions.length} buổi học'),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.all_inclusive),
+                title: const Text('Xuất toàn bộ'),
+                subtitle: const Text('Tất cả các buổi học của môn này'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportAllSessions(subject);
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.list),
+                title: const Text('Chọn buổi học cụ thể'),
+                subtitle: const Text('Chọn từng buổi để xuất'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSessionSelection(subject);
+                },
+              ),
+            ],
+          ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -131,12 +167,32 @@ class _ExportSessionsScreenState extends State<ExportSessionsScreen> {
           ),
         ],
       ),
-    );
+      );
+    }
   }
 
-  Future<void> _exportAllSessions(Subject subject, List<AttendanceSession> sessions) async {
+  Future<void> _exportAllSessions(Subject subject) async {
     setState(() => _isExporting = true);
     try {
+      // Reload sessions from server to ensure latest data before exporting
+      List<AttendanceSession> sessions = [];
+      if (subject.id != null) {
+        sessions = await _db.getSessionsBySubject(subject.id!);
+      } else {
+        final allSessions = await _db.getAllSessions();
+        sessions = allSessions.where((s) => s.subjectId == subject.id).toList();
+      }
+      
+      if (sessions.isEmpty) {
+        setState(() => _isExporting = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Môn học này chưa có buổi học nào')),
+          );
+        }
+        return;
+      }
+      
       final filePath = await _exportService.exportSessionsBySubjectToCSV(
         subject: subject,
         sessions: sessions,
@@ -160,8 +216,51 @@ class _ExportSessionsScreenState extends State<ExportSessionsScreen> {
     }
   }
 
-  Future<void> _showSessionSelection(Subject subject, List<AttendanceSession> sessions) async {
+  Future<void> _showSessionSelection(Subject subject) async {
     final selectedSessions = <AttendanceSession>[];
+    
+    // Reload sessions from server to ensure latest data
+    if (subject.id == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Môn học không hợp lệ')),
+        );
+      }
+      return;
+    }
+    
+    // Show loading dialog first
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    
+    List<AttendanceSession> sessions = [];
+    try {
+      sessions = await _db.getSessionsBySubject(subject.id!);
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi tải danh sách buổi học: $e')),
+        );
+      }
+      return;
+    }
+    
+    if (mounted) {
+      Navigator.pop(context); // Close loading
+    }
+    
+    if (sessions.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Môn học này chưa có buổi học nào')),
+        );
+      }
+      return;
+    }
     
     await showDialog(
       context: context,
@@ -282,6 +381,13 @@ class _ExportSessionsScreenState extends State<ExportSessionsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Xuất dữ liệu buổi học'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadSubjects,
+            tooltip: 'Làm mới',
+          ),
+        ],
       ),
       body: _isExporting
           ? const Center(

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/attendance_record.dart';
+import '../models/qr_token.dart';
 import '../database/database_helper.dart';
 import '../providers/auth_provider.dart';
+import '../services/qr_token_service.dart';
 import 'qr_scanner_screen.dart';
 
 class StudentAttendanceScreen extends StatefulWidget {
@@ -14,6 +16,7 @@ class StudentAttendanceScreen extends StatefulWidget {
 
 class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final QrTokenService _qrTokenService = QrTokenService.instance;
   final TextEditingController _codeController = TextEditingController();
   bool _isProcessing = false;
 
@@ -29,10 +32,32 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
     setState(() => _isProcessing = true);
     
     try {
-      // Find session by code (4 digits)
-      final session = await _db.getSessionByCode(code);
+      // Get current user
+      final authProvider = context.read<AuthProvider>();
+      final currentUser = authProvider.currentUser;
+      if (currentUser == null) {
+        throw Exception('Chưa đăng nhập');
+      }
+
+      // Get user ID from UID (hash-based for Firebase compatibility)
+      final userId = _db.uidToUserId(currentUser.uid);
+
+      // Get student by user email
+      final allStudents = await _db.getAllStudents();
+      final student = allStudents.firstWhere(
+        (s) => s.email.toLowerCase() == currentUser.email.toLowerCase(),
+        orElse: () => throw Exception('Không tìm thấy thông tin học sinh'),
+      );
+
+      if (student.id == null) {
+        throw Exception('Thông tin học sinh không hợp lệ');
+      }
+
+      // First, find token by code4Digits to get sessionId (without validating)
+      final tokenMap = await _db.findQrTokenByCode4Digits(code);
       
-      if (session == null) {
+      if (tokenMap == null) {
+        // Token not found
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -45,30 +70,50 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         return;
       }
 
-      // Get current student
-      final authProvider = context.read<AuthProvider>();
-      final currentUser = authProvider.currentUser;
-      if (currentUser == null) {
-        throw Exception('Chưa đăng nhập');
+      // Get sessionId from token
+      final qrToken = QrToken.fromMap(tokenMap);
+      final sessionId = qrToken.sessionId;
+
+      // Get session to check subject
+      final session = await _db.getSession(sessionId);
+      if (session == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không tìm thấy buổi học'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isProcessing = false);
+        return;
       }
 
-      final allStudents = await _db.getAllStudents();
-      final student = allStudents.firstWhere(
-        (s) => s.email.toLowerCase() == currentUser.email.toLowerCase(),
-        orElse: () => throw Exception('Không tìm thấy thông tin học sinh'),
-      );
-
-      if (student.id == null) {
-        throw Exception('Thông tin học sinh không hợp lệ');
+      // Validate: Check if student is enrolled in this subject
+      final subjectIdStr = session.subjectId.toString();
+      final studentSubjectIds = student.subjectIds ?? [];
+      if (!studentSubjectIds.contains(subjectIdStr)) {
+        // Student is not enrolled in this subject - show generic error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mã điểm danh không hợp lệ hoặc đã hết hạn'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isProcessing = false);
+        return;
       }
 
-      // Check if already marked
+      // Check if already attended FIRST (before validating token)
       final existingRecord = await _db.getRecordBySessionAndStudent(
-        session.id!,
+        sessionId,
         student.id!,
       );
 
       if (existingRecord != null) {
+        // Already attended - return early with proper message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -81,17 +126,38 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         return;
       }
 
-      // Create attendance record
+      // Not attended yet - now validate and consume token
+      final result = await _qrTokenService.validateByCode4Digits(
+        code4Digits: code,
+        userId: userId,
+      );
+
+      if (result['valid'] != true) {
+        // Token validation failed (expired or already used)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Mã điểm danh không hợp lệ hoặc đã hết hạn'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // Token is valid and consumed, create attendance record
       final record = AttendanceRecord(
-        sessionId: session.id!,
+        sessionId: sessionId,
         studentId: student.id!,
         status: AttendanceStatus.present,
         checkInTime: DateTime.now(),
-        note: 'Điểm danh bằng mã',
+        checkInMethod: CheckInMethod.qrCode,
+        note: 'Điểm danh bằng mã 4 số',
       );
 
       await _db.createRecord(record);
-
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -102,6 +168,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         _codeController.clear();
         Navigator.pop(context);
       }
+      setState(() => _isProcessing = false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -111,7 +178,6 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
           ),
         );
       }
-    } finally {
       setState(() => _isProcessing = false);
     }
   }

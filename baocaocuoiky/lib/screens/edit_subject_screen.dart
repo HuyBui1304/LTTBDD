@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/subject.dart';
 import '../models/app_user.dart';
 import '../models/student.dart';
 import '../models/attendance_session.dart';
 import '../database/database_helper.dart';
+import '../providers/auth_provider.dart';
 import '../widgets/state_widgets.dart' as custom;
 
 class EditSubjectScreen extends StatefulWidget {
@@ -36,6 +38,7 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _autoFillSessions = true;
+  bool _isTeacher = false; // Flag to check if current user is teacher
   
   // Session dates (dynamic - có thể thêm/xóa)
   List<DateTime?> _sessionDates = [];
@@ -70,6 +73,12 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
+      // Check if current user is teacher
+      final authProvider = context.read<AuthProvider>();
+      final currentUser = authProvider.currentUser;
+      final role = currentUser?.role;
+      _isTeacher = (role == UserRole.teacher);
+      
       final teachers = await _db.getUsersByRole(UserRole.teacher);
       final students = await _db.getAllStudents();
       final sessions = await _db.getSessionsBySubject(widget.subject.id!);
@@ -96,6 +105,19 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
         return const TimeOfDay(hour: 11, minute: 30);
       });
       _sessionIds = sessions.map((s) => s.id).toList();
+      
+      // Khởi tạo time slots dựa trên thời gian của session
+      _sessionTimeSlots = sessions.map((s) {
+        if (s.sessionDate != null) {
+          final hour = s.sessionDate!.hour;
+          if (hour >= 7 && hour < 12) {
+            return 'morning';
+          } else if (hour >= 12 && hour < 17) {
+            return 'afternoon';
+          }
+        }
+        return 'custom';
+      }).toList();
       
       // Tìm giáo viên hiện tại
       AppUser? currentTeacher;
@@ -208,6 +230,10 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
       
       try {
         await _db.deleteSession(sessionId);
+        
+        // Xóa khỏi _existingSessions để cập nhật maxSessionNumber
+        _existingSessions.removeWhere((s) => s.id == sessionId);
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đã xóa buổi học')),
@@ -227,7 +253,9 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
       _sessionDates.removeAt(index);
       _sessionStartTimes.removeAt(index);
       _sessionEndTimes.removeAt(index);
-      _sessionTimeSlots.removeAt(index);
+      if (index < _sessionTimeSlots.length) {
+        _sessionTimeSlots.removeAt(index);
+      }
       _sessionIds.removeAt(index);
     });
   }
@@ -381,9 +409,22 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
   Future<void> _saveSubject() async {
     if (!_formKey.currentState!.validate()) return;
     
-    if (_selectedTeacher == null) {
+    // Only check teacher selection if not a teacher (admin can change teacher)
+    if (!_isTeacher && _selectedTeacher == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng chọn giáo viên')),
+      );
+      return;
+    }
+    
+    // If teacher, use current user's UID (cannot change teacher)
+    final creatorId = _isTeacher 
+        ? widget.subject.creatorId ?? context.read<AuthProvider>().currentUser?.uid
+        : _selectedTeacher!.uid;
+    
+    if (creatorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không tìm thấy thông tin giáo viên')),
       );
       return;
     }
@@ -400,7 +441,7 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
         description: _descriptionController.text.trim().isEmpty 
             ? null 
             : _descriptionController.text.trim(),
-        creatorId: _selectedTeacher!.uid,
+        creatorId: creatorId,
       );
 
       await _db.updateSubject(updatedSubject);
@@ -447,6 +488,15 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
       }
 
       // 3. Cập nhật/tạo/xóa buổi học
+      // Tìm session number lớn nhất hiện có
+      int maxSessionNumber = 0;
+      for (final session in _existingSessions) {
+        if (session.sessionNumber > maxSessionNumber) {
+          maxSessionNumber = session.sessionNumber;
+        }
+      }
+      
+      int newSessionCounter = 0;
       for (int i = 0; i < _sessionDates.length; i++) {
         final sessionDate = _sessionDates[i];
         if (sessionDate == null) continue;
@@ -476,12 +526,13 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
             sessionNumber: existingSession.sessionNumber,
             sessionDate: sessionDateTime,
             status: existingSession.status,
-            creatorId: _selectedTeacher!.uid,
+            creatorId: creatorId,
           );
           await _db.updateSession(updatedSession);
         } else {
           // Tạo session mới
-          final sessionNumber = _existingSessions.length + i + 1;
+          newSessionCounter++;
+          final sessionNumber = maxSessionNumber + newSessionCounter;
           final session = AttendanceSession(
             sessionCode: '${updatedSubject.subjectCode}-BUOI$sessionNumber',
             title: 'Buổi $sessionNumber',
@@ -491,7 +542,7 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
             sessionNumber: sessionNumber,
             sessionDate: sessionDateTime,
             status: SessionStatus.scheduled,
-            creatorId: _selectedTeacher!.uid,
+            creatorId: creatorId,
           );
           await _db.createSession(session);
         }
@@ -601,43 +652,45 @@ class _EditSubjectScreenState extends State<EditSubjectScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Chọn giáo viên
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Giáo viên *',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<AppUser>(
-                        value: _selectedTeacher,
-                        decoration: const InputDecoration(
-                          labelText: 'Chọn giáo viên',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.person),
+              // Chọn giáo viên (chỉ hiển thị cho Admin, không cho Teacher chỉnh sửa)
+              if (!_isTeacher) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Giáo viên *',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                         ),
-                        items: _teachers.map((teacher) {
-                          return DropdownMenuItem(
-                            value: teacher,
-                            child: Text(teacher.displayName),
-                          );
-                        }).toList(),
-                        onChanged: (teacher) {
-                          setState(() => _selectedTeacher = teacher);
-                        },
-                        validator: (v) => v == null ? 'Vui lòng chọn giáo viên' : null,
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<AppUser>(
+                          value: _selectedTeacher,
+                          decoration: const InputDecoration(
+                            labelText: 'Chọn giáo viên',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person),
+                          ),
+                          items: _teachers.map((teacher) {
+                            return DropdownMenuItem(
+                              value: teacher,
+                              child: Text(teacher.displayName),
+                            );
+                          }).toList(),
+                          onChanged: (teacher) {
+                            setState(() => _selectedTeacher = teacher);
+                          },
+                          validator: (v) => v == null ? 'Vui lòng chọn giáo viên' : null,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
               // Chọn học sinh
               Card(

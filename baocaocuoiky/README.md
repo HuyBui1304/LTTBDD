@@ -106,7 +106,23 @@ cd baocaocuoiky
 flutter pub get
 ```
 
-### 3. Chạy ứng dụng
+### 3. Cấu hình Font cho PDF (Quan trọng)
+
+Để PDF hiển thị đúng font chữ tiếng Việt, bạn cần thêm font Noto Sans:
+
+1. **Tải font Noto Sans**:
+   - Truy cập: https://fonts.google.com/noto/specimen/Noto+Sans
+   - Tải file `NotoSans-Regular.ttf`
+
+2. **Đặt font vào project**:
+   - Copy file `NotoSans-Regular.ttf` vào thư mục `assets/fonts/`
+   - Đảm bảo file có tên chính xác: `NotoSans-Regular.ttf`
+
+3. **Xem hướng dẫn chi tiết**: [assets/fonts/README.md](assets/fonts/README.md)
+
+> ⚠️ **Lưu ý**: Nếu không thêm font, PDF vẫn hoạt động nhưng có thể hiển thị sai một số ký tự tiếng Việt.
+
+### 4. Chạy ứng dụng
 
 ```bash
 # Chạy trên thiết bị mặc định
@@ -122,7 +138,7 @@ flutter run -d ios
 flutter run -d chrome
 ```
 
-### 4. Build ứng dụng
+### 5. Build ứng dụng
 
 ```bash
 # Build APK cho Android
@@ -261,10 +277,11 @@ baocaocuoiky/
 - **fl_chart** 0.66.0 - Beautiful charts and graphs
 
 ### Export & Printing
-- **csv** 6.0.0 - CSV file generation
-- **pdf** 3.10.7 - PDF document generation
+- **csv** 6.0.0 - CSV file generation (với UTF-8 BOM cho Excel)
+- **pdf** 3.10.7 - PDF document generation (hỗ trợ font tiếng Việt)
 - **printing** 5.12.0 - Print documents
 - **path_provider** 2.1.2 - File system paths
+- **share_plus** 10.1.2 - Chia sẻ file CSV/PDF
 
 ### UI & UX
 - **cached_network_image** 3.3.1 - Image caching
@@ -340,6 +357,21 @@ Hệ thống sử dụng SQLite với 8 bảng chính:
 
 > 📸 Screenshots sẽ được thêm vào sau
 
+## ⚙️ Cấu hình bổ sung
+
+### Font PDF cho tiếng Việt
+
+Để PDF hiển thị đúng font chữ tiếng Việt, vui lòng xem hướng dẫn chi tiết tại: [assets/fonts/README.md](assets/fonts/README.md)
+
+**Tóm tắt nhanh:**
+1. Tải `NotoSans-Regular.ttf` từ Google Fonts
+2. Đặt vào `assets/fonts/NotoSans-Regular.ttf`
+3. Chạy `flutter pub get` và khởi động lại app
+
+### CSV Export
+
+File CSV được xuất với UTF-8 BOM để tương thích với Microsoft Excel. File sẽ tự động mở đúng với tiếng Việt khi mở bằng Excel.
+
 ## 🤝 Đóng góp
 
 Chúng tôi hoan nghênh mọi đóng góp! Vui lòng làm theo các bước sau:
@@ -380,7 +412,6 @@ Nếu bạn có bất kỳ câu hỏi hoặc đề xuất nào, vui lòng:
 
 <div align="center">
 
-**⭐ Nếu dự án này hữu ích, hãy cho chúng tôi một star! ⭐**
 
 Made with ❤️ using Flutter
 

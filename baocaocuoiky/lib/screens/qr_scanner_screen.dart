@@ -109,19 +109,25 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         orElse: () => throw Exception('Không tìm thấy thông tin học sinh'),
       );
 
-      // Validate and consume token
-      final result = await _qrTokenService.validateAndConsumeToken(
-        token: token,
-        userId: userId,
-      );
-
-      if (!result['valid']) {
-        _showError(result['message'] ?? 'Mã QR không hợp lệ');
+      // Get session to check subject
+      final session = await _db.getSession(sessionId);
+      if (session == null) {
+        _showError('Không tìm thấy buổi học');
         setState(() => _isProcessing = false);
         return;
       }
 
-      // Check if already attended
+      // Validate: Check if student is enrolled in this subject
+      final subjectIdStr = session.subjectId.toString();
+      final studentSubjectIds = student.subjectIds ?? [];
+      if (!studentSubjectIds.contains(subjectIdStr)) {
+        // Student is not enrolled in this subject - show generic error message
+        _showError('Mã điểm danh không hợp lệ hoặc đã hết hạn');
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // Check if already attended FIRST (before validating token)
       final existing = await _db.getRecordBySessionAndStudent(
         sessionId,
         student.id!,
@@ -129,6 +135,18 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
       if (existing != null) {
         _showWarning('Bạn đã điểm danh rồi!');
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // Not attended yet - now validate and consume token
+      final result = await _qrTokenService.validateAndConsumeToken(
+        token: token,
+        userId: userId,
+      );
+
+      if (!result['valid']) {
+        _showError(result['message'] ?? 'Mã QR không hợp lệ');
         setState(() => _isProcessing = false);
         return;
       }
@@ -270,6 +288,16 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         (s) => s.studentId.toLowerCase() == studentCode.toLowerCase(),
         orElse: () => throw Exception('Không tìm thấy sinh viên với mã: $studentCode'),
       );
+
+      // Validate: Check if student is enrolled in this subject
+      final subjectIdStr = session.subjectId.toString();
+      final studentSubjectIds = student.subjectIds ?? [];
+      if (!studentSubjectIds.contains(subjectIdStr)) {
+        // Student is not enrolled in this subject - show generic error message
+        _showError('Mã điểm danh không hợp lệ hoặc đã hết hạn');
+        setState(() => _isProcessing = false);
+        return;
+      }
 
       // Check if already attended
       final existing = await _db.getRecordBySessionAndStudent(
@@ -730,26 +758,23 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       }
 
       final sessionId = session?.id;
-      if (sessionId == null) {
+      if (sessionId == null || session == null) {
         _showError('Buổi học không hợp lệ');
         setState(() => _isProcessing = false);
         return;
       }
 
-      // Validate code
-      final result = await _qrTokenService.validateByCode4Digits(
-        code4Digits: code,
-        sessionId: sessionId,
-        userId: userId,
-      );
-
-      if (!result['valid']) {
-        _showError(result['message'] ?? 'Mã không đúng hoặc đã hết hạn');
+      // Validate: Check if student is enrolled in this subject
+      final subjectIdStr = session.subjectId.toString();
+      final studentSubjectIds = student.subjectIds ?? [];
+      if (!studentSubjectIds.contains(subjectIdStr)) {
+        // Student is not enrolled in this subject - show generic error message
+        _showError('Mã điểm danh không hợp lệ hoặc đã hết hạn');
         setState(() => _isProcessing = false);
         return;
       }
 
-      // Check if already attended
+      // Check if already attended FIRST (before validating token)
       final existing = await _db.getRecordBySessionAndStudent(
         sessionId,
         student.id!,
@@ -757,6 +782,19 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
       if (existing != null) {
         _showWarning('Bạn đã điểm danh rồi!');
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // Not attended yet - now validate code
+      final result = await _qrTokenService.validateByCode4Digits(
+        code4Digits: code,
+        sessionId: sessionId, // Pass sessionId for faster lookup
+        userId: userId,
+      );
+
+      if (!result['valid']) {
+        _showError(result['message'] ?? 'Mã không đúng hoặc đã hết hạn');
         setState(() => _isProcessing = false);
         return;
       }

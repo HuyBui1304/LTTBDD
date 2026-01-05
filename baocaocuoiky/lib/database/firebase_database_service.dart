@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../models/student.dart';
 import '../models/attendance_session.dart';
 import '../models/attendance_record.dart';
@@ -8,7 +9,7 @@ import '../models/app_user.dart';
 import '../models/subject.dart';
 import '../models/notification.dart';
 import 'package:crypto/crypto.dart' show sha256;
-import 'package:cloud_firestore/cloud_firestore.dart' show Query;
+import 'package:cloud_firestore/cloud_firestore.dart' show Query, GetOptions, Source;
 
 class Crypto {
   String hashPassword(String password) {
@@ -61,6 +62,22 @@ class FirebaseDatabaseService {
     }
   }
 
+  Future<Student?> getStudentByEmail(String email) async {
+    try {
+      final snapshot = await _collection('students')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return null;
+      
+      final data = snapshot.docs.first.data() as Map<String, dynamic>;
+      return Student.fromMap(data);
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<List<Student>> getAllStudents() async {
     try {
       final snapshot = await _collection('students').get();
@@ -68,12 +85,12 @@ class FirebaseDatabaseService {
       
       final List<Student> students = [];
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final data = doc.data() as Map<String, dynamic>;
           students.add(Student.fromMap(data));
-        } catch (e) {
-          // Skip invalid entries
-        }
+          } catch (e) {
+            // Skip invalid entries
+          }
       }
       
       students.sort((a, b) => a.name.compareTo(b.name));
@@ -215,9 +232,9 @@ class FirebaseDatabaseService {
             data['id'] = subjectId;
           }
           subjects.add(Subject.fromMap(data));
-        } catch (e) {
-          // Skip invalid entries
-        }
+          } catch (e) {
+            // Skip invalid entries
+          }
       }
       
       subjects.sort((a, b) => a.subjectName.compareTo(b.subjectName));
@@ -266,21 +283,45 @@ class FirebaseDatabaseService {
 
   Future<int> deleteSubject(int id) async {
     try {
-      await _collection('subjects').doc(id.toString()).delete();
-      
-      // Also delete related sessions
+      // Get all related sessions first
       final sessionsSnapshot = await _collection('attendance_sessions')
           .where('subjectId', isEqualTo: id)
           .get();
       
+      // Delete all attendance records for these sessions
       final batch = _firestore.batch();
-      for (var doc in sessionsSnapshot.docs) {
-        batch.delete(doc.reference);
+      
+      // Collect all session IDs and delete sessions in batch
+      for (var sessionDoc in sessionsSnapshot.docs) {
+        // Add session to batch for deletion
+        batch.delete(sessionDoc.reference);
+        
+        // Get session ID to find related records
+        final sessionData = sessionDoc.data() as Map<String, dynamic>?;
+        final sessionId = sessionData?['id'] as int?;
+        
+        if (sessionId != null) {
+          // Query and add attendance records to batch
+          final recordsSnapshot = await _collection('attendance_records')
+              .where('sessionId', isEqualTo: sessionId)
+              .get();
+          
+          for (var recordDoc in recordsSnapshot.docs) {
+            batch.delete(recordDoc.reference);
+          }
+        }
       }
+      
+      // Commit batch (sessions and records)
       await batch.commit();
       
+      // Finally, delete the subject itself
+      await _collection('subjects').doc(id.toString()).delete();
+      
+      debugPrint('✅ [deleteSubject] Successfully deleted subject $id and all related data');
       return 1;
     } catch (e) {
+      debugPrint('❌ [deleteSubject] Error deleting subject $id: $e');
       throw 'Xóa môn học thất bại: $e';
     }
   }
@@ -328,12 +369,12 @@ class FirebaseDatabaseService {
       
       final List<AttendanceSession> sessions = [];
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final data = doc.data() as Map<String, dynamic>;
           sessions.add(AttendanceSession.fromMap(data));
-        } catch (e) {
-          // Skip invalid entries
-        }
+          } catch (e) {
+            // Skip invalid entries
+          }
       }
       
       return sessions;
@@ -367,27 +408,55 @@ class FirebaseDatabaseService {
   Future<List<AttendanceSession>> getSessionsBySubject(int subjectId) async {
     try {
       // Query without orderBy to avoid composite index requirement
+      // Use Source.server to force fetch from server instead of cache
       final snapshot = await _collection('attendance_sessions')
           .where('subjectId', isEqualTo: subjectId)
-          .get();
+          .get(const GetOptions(source: Source.server));
+      
+      debugPrint('🔍 [getSessionsBySubject] Query for subjectId=$subjectId returned ${snapshot.docs.length} documents');
       
       final List<AttendanceSession> sessions = [];
       for (var doc in snapshot.docs) {
         try {
           final data = doc.data() as Map<String, dynamic>;
-          sessions.add(AttendanceSession.fromMap(data));
+          final session = AttendanceSession.fromMap(data);
+          debugPrint('  - Session ID: ${doc.id}, sessionNumber: ${session.sessionNumber}, title: ${session.title}');
+          sessions.add(session);
         } catch (e) {
           // Skip invalid entries
+          debugPrint('Error parsing session ${doc.id}: $e');
         }
       }
       
       // Sort by sessionNumber after fetching
       sessions.sort((a, b) => a.sessionNumber.compareTo(b.sessionNumber));
       
+      debugPrint('✅ [getSessionsBySubject] Returning ${sessions.length} sessions for subjectId=$subjectId');
+      
       return sessions;
     } catch (e) {
       debugPrint('Error getting sessions by subject: $e');
-      return [];
+      // Fallback to cache if server fails
+      try {
+        final snapshot = await _collection('attendance_sessions')
+            .where('subjectId', isEqualTo: subjectId)
+            .get();
+        
+        final List<AttendanceSession> sessions = [];
+        for (var doc in snapshot.docs) {
+          try {
+            final data = doc.data() as Map<String, dynamic>;
+            sessions.add(AttendanceSession.fromMap(data));
+          } catch (e) {
+            debugPrint('Error parsing session ${doc.id}: $e');
+          }
+        }
+        sessions.sort((a, b) => a.sessionNumber.compareTo(b.sessionNumber));
+        return sessions;
+      } catch (fallbackError) {
+        debugPrint('Fallback also failed: $fallbackError');
+        return [];
+      }
     }
   }
 
@@ -406,21 +475,25 @@ class FirebaseDatabaseService {
 
   Future<int> deleteSession(int id) async {
     try {
-      await _collection('attendance_sessions').doc(id.toString()).delete();
-      
-      // Also delete related records
+      // Get all related attendance records first
       final recordsSnapshot = await _collection('attendance_records')
           .where('sessionId', isEqualTo: id)
           .get();
       
+      // Delete records in batch
       final batch = _firestore.batch();
       for (var doc in recordsSnapshot.docs) {
         batch.delete(doc.reference);
       }
       await batch.commit();
       
+      // Finally, delete the session itself
+      await _collection('attendance_sessions').doc(id.toString()).delete();
+      
+      debugPrint('✅ [deleteSession] Successfully deleted session $id and ${recordsSnapshot.docs.length} attendance records');
       return 1;
     } catch (e) {
+      debugPrint('❌ [deleteSession] Error deleting session $id: $e');
       throw 'Xóa buổi học thất bại: $e';
     }
   }
@@ -428,7 +501,7 @@ class FirebaseDatabaseService {
   // ========== ATTENDANCE RECORD OPERATIONS ==========
 
   Future<AttendanceRecord> createRecord(AttendanceRecord record) async {
-    try {
+    return await _withRetry(() async {
       final recordsRef = _collection('attendance_records');
       final id = DateTime.now().millisecondsSinceEpoch;
       
@@ -438,9 +511,7 @@ class FirebaseDatabaseService {
       await recordsRef.doc(id.toString()).set(recordMap);
       
       return record.copyWith(id: id);
-    } catch (e) {
-      throw 'Tạo bản ghi điểm danh thất bại: $e';
-    }
+    }, errorMessage: 'Tạo bản ghi điểm danh thất bại');
   }
 
   Future<AttendanceRecord?> getRecord(int id) async {
@@ -468,29 +539,29 @@ class FirebaseDatabaseService {
       
       final List<AttendanceRecord> records = [];
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final recordMap = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
-          
-          // Get student info
-          if (recordMap['studentId'] != null) {
-            final student = await getStudent(recordMap['studentId'] as int);
-            if (student != null) {
-              recordMap['studentName'] = student.name;
-              recordMap['studentCode'] = student.studentId;
+            
+            // Get student info
+            if (recordMap['studentId'] != null) {
+              final student = await getStudent(recordMap['studentId'] as int);
+              if (student != null) {
+                recordMap['studentName'] = student.name;
+                recordMap['studentCode'] = student.studentId;
+              }
             }
-          }
-          
-          // Get teacher info if exists
-          if (recordMap['checkedByTeacherId'] != null) {
-            final teacher = await getUserByUid(recordMap['checkedByTeacherId'].toString());
-            if (teacher != null) {
-              recordMap['teacherName'] = teacher.displayName;
+            
+            // Get teacher info if exists
+            if (recordMap['checkedByTeacherId'] != null) {
+              final teacher = await getUserByUid(recordMap['checkedByTeacherId'].toString());
+              if (teacher != null) {
+                recordMap['teacherName'] = teacher.displayName;
+              }
             }
-          }
-          
-          records.add(AttendanceRecord.fromMap(recordMap));
-        } catch (e) {
-          // Skip invalid entries
+            
+            records.add(AttendanceRecord.fromMap(recordMap));
+          } catch (e) {
+            // Skip invalid entries
         }
       }
       
@@ -512,12 +583,12 @@ class FirebaseDatabaseService {
       
       final List<AttendanceRecord> records = [];
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final data = doc.data() as Map<String, dynamic>;
           records.add(AttendanceRecord.fromMap(data));
-        } catch (e) {
-          // Skip invalid entries
-        }
+          } catch (e) {
+            // Skip invalid entries
+          }
       }
       
       return records;
@@ -546,16 +617,14 @@ class FirebaseDatabaseService {
   }
 
   Future<int> updateRecord(AttendanceRecord record) async {
-    try {
+    return await _withRetry(() async {
       if (record.id == null) throw 'Record ID is required';
       
       final updatedMap = record.toMap();
       updatedMap['updatedAt'] = DateTime.now().toIso8601String();
       await _collection('attendance_records').doc(record.id.toString()).update(updatedMap);
       return 1;
-    } catch (e) {
-      throw 'Cập nhật bản ghi thất bại: $e';
-    }
+    }, errorMessage: 'Cập nhật bản ghi thất bại');
   }
 
   Future<int> deleteRecord(int id) async {
@@ -661,12 +730,12 @@ class FirebaseDatabaseService {
       
       final List<AppUser> users = [];
       for (var doc in snapshot.docs) {
-        try {
+          try {
           final data = doc.data() as Map<String, dynamic>;
           users.add(AppUser.fromMap(data));
-        } catch (e) {
-          // Skip invalid entries
-        }
+          } catch (e) {
+            // Skip invalid entries
+          }
       }
       
       return users;
@@ -939,6 +1008,80 @@ class FirebaseDatabaseService {
     }
   }
 
+  // Find QR token by code4Digits (search in all tokens, returns first match even if used)
+  // This is used to get sessionId before checking attendance record
+  Future<Map<String, dynamic>?> findQrTokenByCode4Digits(String code4Digits) async {
+    try {
+      // Query by code4Digits (may need composite index for orderBy, but try without first)
+      Query query = _collection('qr_tokens')
+          .where('code4Digits', isEqualTo: code4Digits)
+          .limit(20); // Limit to avoid too many results
+      
+      QuerySnapshot snapshot;
+      try {
+        // Try with orderBy first (preferred - most recent tokens first)
+        snapshot = await query.orderBy('createdAt', descending: true).get();
+      } catch (e) {
+        // If orderBy fails (no index), try without orderBy
+        debugPrint('orderBy failed, trying without orderBy: $e');
+        snapshot = await query.get();
+      }
+      
+      if (snapshot.docs.isEmpty) return null;
+      
+      // Return the first token (most recent), even if used - we just need sessionId
+      return Map<String, dynamic>.from(snapshot.docs.first.data() as Map);
+    } catch (e) {
+      debugPrint('Error finding token by code4Digits: $e');
+      return null;
+    }
+  }
+
+  // Find QR token by code4Digits (search in all tokens, only returns active tokens)
+  Future<Map<String, dynamic>?> getQrTokenByCode4Digits(String code4Digits) async {
+    try {
+      // Query by code4Digits (may need composite index for orderBy, but try without first)
+      Query query = _collection('qr_tokens')
+          .where('code4Digits', isEqualTo: code4Digits)
+          .limit(20); // Limit to avoid too many results
+      
+      QuerySnapshot snapshot;
+      try {
+        // Try with orderBy first (preferred - most recent tokens first)
+        snapshot = await query.orderBy('createdAt', descending: true).get();
+      } catch (e) {
+        // If orderBy fails (no index), try without orderBy
+        debugPrint('orderBy failed, trying without orderBy: $e');
+        snapshot = await query.get();
+      }
+      
+      if (snapshot.docs.isEmpty) return null;
+      
+      // Find the first active (not expired, not used) token
+      final now = DateTime.now();
+      for (var doc in snapshot.docs) {
+        final tokenData = Map<String, dynamic>.from(doc.data() as Map);
+        try {
+          final expiresAt = DateTime.parse(tokenData['expiresAt'] as String);
+          final isUsed = (tokenData['isUsed'] as int) == 1;
+          
+          if (!isUsed && expiresAt.isAfter(now)) {
+            return tokenData;
+          }
+        } catch (e) {
+          // Skip invalid tokens
+          debugPrint('Error parsing token data: $e');
+          continue;
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('Error finding token by code4Digits: $e');
+      return null;
+    }
+  }
+
   // Delete expired QR tokens
   Future<int> deleteExpiredQrTokens() async {
     try {
@@ -1043,13 +1186,11 @@ class FirebaseDatabaseService {
   // ========== NOTIFICATION OPERATIONS ==========
 
   Future<AppNotification> createNotification(AppNotification notification) async {
-    try {
+    return await _withRetry(() async {
       final notificationsRef = _collection('notifications');
       final docRef = await notificationsRef.add(notification.toMap());
       return notification.copyWith(id: docRef.id);
-    } catch (e) {
-      throw 'Tạo thông báo thất bại: $e';
-    }
+    }, errorMessage: 'Tạo thông báo thất bại');
   }
 
   Future<List<AppNotification>> getAllNotifications() async {
@@ -1215,20 +1356,76 @@ class FirebaseDatabaseService {
 
   Future<void> markNotificationAsRead(String notificationId, String userId) async {
     try {
-      final notificationRef = _collection('notifications').doc(notificationId);
-      final doc = await notificationRef.get();
-      
-      if (!doc.exists) return;
-      
-      final data = doc.data() as Map<String, dynamic>;
-      final readBy = List<String>.from(data['readBy'] ?? []);
-      
-      if (!readBy.contains(userId)) {
-        readBy.add(userId);
-        await notificationRef.update({'readBy': readBy});
-      }
+      await _withRetry(() async {
+        final notificationRef = _collection('notifications').doc(notificationId);
+        final doc = await notificationRef.get();
+        
+        if (!doc.exists) return;
+        
+        final data = doc.data() as Map<String, dynamic>;
+        final readBy = List<String>.from(data['readBy'] ?? []);
+        
+        if (!readBy.contains(userId)) {
+          readBy.add(userId);
+          await notificationRef.update({'readBy': readBy});
+        }
+      }, errorMessage: 'Đánh dấu đã đọc thất bại');
     } catch (e) {
       debugPrint('Lỗi khi đánh dấu đã đọc: $e');
     }
+  }
+
+  // Helper method để retry các thao tác Firestore khi mất mạng
+  Future<T> _withRetry<T>(
+    Future<T> Function() operation, {
+    String errorMessage = 'Thao tác thất bại',
+    int maxRetries = 3,
+    Duration initialDelay = const Duration(seconds: 1),
+  }) async {
+    int attempt = 0;
+    Duration delay = initialDelay;
+
+    while (attempt < maxRetries) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempt++;
+        
+        // Kiểm tra xem có phải lỗi mạng không
+        final isNetworkError = _isNetworkError(e);
+        
+        if (!isNetworkError || attempt >= maxRetries) {
+          // Không phải lỗi mạng hoặc đã hết số lần retry
+          throw '$errorMessage: $e';
+        }
+
+        // Lỗi mạng - retry với exponential backoff
+        debugPrint('⚠️ Lỗi mạng (attempt $attempt/$maxRetries): $e. Retry sau ${delay.inSeconds}s...');
+        await Future.delayed(delay);
+        delay = Duration(milliseconds: (delay.inMilliseconds * 2).round());
+      }
+    }
+
+    throw '$errorMessage: Đã thử $maxRetries lần nhưng vẫn thất bại';
+  }
+
+  // Kiểm tra xem lỗi có phải do mạng không
+  bool _isNetworkError(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    
+    // Các từ khóa chỉ lỗi mạng
+    final networkKeywords = [
+      'network',
+      'unavailable',
+      'timeout',
+      'connection',
+      'internet',
+      'offline',
+      'failed to get document',
+      'deadline exceeded',
+      'unreachable',
+    ];
+
+    return networkKeywords.any((keyword) => errorString.contains(keyword));
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/app_user.dart';
+import '../models/student.dart';
 import '../utils/validators.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -42,13 +43,75 @@ class _EditUserScreenState extends State<EditUserScreen> {
     setState(() => _isSaving = true);
 
     try {
+      final oldRole = widget.user.role;
+      final newRole = _selectedRole ?? widget.user.role;
+      final email = _emailController.text.trim();
+      final displayName = _nameController.text.trim();
+
       final updatedUser = widget.user.copyWith(
-        displayName: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        role: _selectedRole ?? widget.user.role,
+        displayName: displayName,
+        email: email,
+        role: newRole,
       );
 
+      // Update user in users collection
       await _db.updateUser(updatedUser);
+
+      // Handle Student record based on role change
+      if (oldRole != newRole) {
+        // Case 1: Changed TO Student (from Teacher/Admin)
+        if (newRole == UserRole.student) {
+          // Check if Student record already exists
+          final existingStudent = await _db.getStudentByEmail(email);
+          
+          if (existingStudent == null) {
+            // Create new Student record
+            final studentId = 'SV${DateTime.now().millisecondsSinceEpoch % 1000000}';
+            final student = Student(
+              studentId: studentId,
+              name: displayName,
+              email: email,
+              phone: null,
+              classCode: null,
+              subjectIds: [],
+            );
+            
+            await _db.createStudent(student);
+          }
+        }
+        // Case 2: Changed FROM Student (to Teacher/Admin)
+        else if (oldRole == UserRole.student && newRole != UserRole.student) {
+          // Find and delete Student record
+          final existingStudent = await _db.getStudentByEmail(email);
+          if (existingStudent != null && existingStudent.id != null) {
+            await _db.deleteStudent(existingStudent.id!);
+          }
+        }
+      } 
+      // Case 3: Role is still Student, but email/name changed
+      else if (newRole == UserRole.student) {
+        // Update Student record if it exists
+        final existingStudent = await _db.getStudentByEmail(widget.user.email);
+        if (existingStudent != null) {
+          final updatedStudent = existingStudent.copyWith(
+            name: displayName,
+            email: email,
+          );
+          await _db.updateStudent(updatedStudent);
+        } else {
+          // Student record doesn't exist, create it
+          final studentId = 'SV${DateTime.now().millisecondsSinceEpoch % 1000000}';
+          final student = Student(
+            studentId: studentId,
+            name: displayName,
+            email: email,
+            phone: null,
+            classCode: null,
+            subjectIds: [],
+          );
+          await _db.createStudent(student);
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -57,7 +120,7 @@ class _EditUserScreenState extends State<EditUserScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to trigger reload
       }
     } catch (e) {
       if (mounted) {

@@ -57,6 +57,17 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   }
 
   Future<void> _deleteUser(AppUser user) async {
+    // Admin không được xóa Admin khác (bảo vệ lớp 2)
+    if (user.role == UserRole.admin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể xóa tài khoản Admin!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -79,6 +90,18 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       try {
         // Xóa từ Firestore
         await _db.deleteUser(user.uid);
+        
+        // If user was a Student, also delete Student record
+        if (user.role == UserRole.student) {
+          try {
+            final student = await _db.getStudentByEmail(user.email);
+            if (student != null && student.id != null) {
+              await _db.deleteStudent(student.id!);
+            }
+          } catch (e) {
+            // Ignore if Student record doesn't exist
+          }
+        }
         
         // Note: Firebase Auth client SDK không thể xóa user khác
         // Cần sử dụng Admin SDK hoặc xóa thủ công từ Console
@@ -197,11 +220,13 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                       onPressed: () => _editUser(user),
                                       tooltip: 'Chỉnh sửa thông tin',
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      onPressed: () => _deleteUser(user),
-                                      tooltip: 'Xóa',
-                                    ),
+                                    // Admin không được xóa Admin khác (cùng cấp)
+                                    if (user.role != UserRole.admin)
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, color: Colors.red),
+                                        onPressed: () => _deleteUser(user),
+                                        tooltip: 'Xóa',
+                                      ),
                                   ],
                                 ),
                                 isThreeLine: true,

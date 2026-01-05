@@ -14,6 +14,13 @@ class QrTokenService {
     required int sessionId,
     int validitySeconds = 60, // Default: token expires in 60 seconds
   }) async {
+    // Clean up expired tokens before generating new one (housekeeping)
+    try {
+      await cleanupExpiredTokens();
+    } catch (e) {
+      // Ignore cleanup errors, continue with token generation
+    }
+    
     final token = _generateRandomToken();
     final code4Digits = _generate4DigitCode();
     final now = DateTime.now();
@@ -37,41 +44,79 @@ class QrTokenService {
     return (1000 + random.nextInt(9000)).toString(); // 1000-9999
   }
   
-  // Validate by 4-digit code
+  // Validate by 4-digit code (find token by code, don't need sessionId)
   Future<Map<String, dynamic>> validateByCode4Digits({
     required String code4Digits,
-    required int sessionId,
     required int userId,
+    int? sessionId, // Optional: if provided, filter by sessionId too
   }) async {
     try {
-      final tokenMaps = await _db.getQrTokensBySession(sessionId);
+      // Try to find token by code4Digits first (faster if we don't know sessionId)
+      Map<String, dynamic>? tokenMap;
       
-      // Find active token with matching code
-      final now = DateTime.now();
-      for (var tokenMap in tokenMaps) {
-        final qrToken = QrToken.fromMap(tokenMap);
-        if (qrToken.code4Digits == code4Digits && 
-            !qrToken.isExpired && 
-            !qrToken.isUsed &&
-            qrToken.expiresAt.isAfter(now)) {
-          // Use the token
-          return await validateAndConsumeToken(
-            token: qrToken.token,
-            userId: userId,
-          );
+      if (sessionId != null) {
+        // If sessionId is provided, search in that session first
+        final tokenMaps = await _db.getQrTokensBySession(sessionId);
+        final now = DateTime.now();
+        for (var tm in tokenMaps) {
+          final qrToken = QrToken.fromMap(tm);
+          if (qrToken.code4Digits == code4Digits && 
+              !qrToken.isExpired && 
+              !qrToken.isUsed &&
+              qrToken.expiresAt.isAfter(now)) {
+            tokenMap = tm;
+            break;
+          }
         }
       }
       
-      return {
-        'valid': false,
-        'message': 'Mã không đúng hoặc đã hết hạn',
-      };
+      // If not found and sessionId not provided, or search in all tokens
+      if (tokenMap == null) {
+        tokenMap = await _db.getQrTokenByCode4Digits(code4Digits);
+      }
+      
+      if (tokenMap == null) {
+        return {
+          'valid': false,
+          'message': 'Mã không đúng hoặc đã hết hạn',
+        };
+      }
+      
+      final qrToken = QrToken.fromMap(tokenMap);
+      
+      // Double-check the token is valid
+      final now = DateTime.now();
+      if (qrToken.isExpired || qrToken.isUsed || !qrToken.expiresAt.isAfter(now)) {
+        return {
+          'valid': false,
+          'message': 'Mã đã hết hạn hoặc đã được sử dụng',
+        };
+      }
+      
+      // Use the token
+      return await validateAndConsumeToken(
+        token: qrToken.token,
+        userId: userId,
+      );
     } catch (e) {
       return {
         'valid': false,
         'message': 'Lỗi xác thực: $e',
       };
     }
+  }
+  
+  // Legacy method for backward compatibility
+  Future<Map<String, dynamic>> validateByCode4DigitsWithSessionId({
+    required String code4Digits,
+    required int sessionId,
+    required int userId,
+  }) async {
+    return validateByCode4Digits(
+      code4Digits: code4Digits,
+      sessionId: sessionId,
+      userId: userId,
+    );
   }
 
   // Validate and consume a token

@@ -8,6 +8,7 @@ import '../models/app_user.dart';
 import '../database/database_helper.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/state_widgets.dart' as custom;
+import '../services/export_service.dart';
 import 'session_attendance_list_screen.dart';
 
 class SubjectDetailScreen extends StatefulWidget {
@@ -24,9 +25,11 @@ class SubjectDetailScreen extends StatefulWidget {
 
 class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final ExportService _exportService = ExportService.instance;
   List<AttendanceSession> _sessions = [];
   AppUser? _teacher;
   bool _isLoading = true;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -103,6 +106,84 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
       return await _db.getRecordBySessionAndStudent(sessionId, student.id!);
     } catch (e) {
       return null;
+    }
+  }
+
+  Future<void> _exportToCSV() async {
+    if (_sessions.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Môn học này chưa có buổi học nào')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isExporting = true);
+    try {
+      await _exportService.exportAndShareSessionsCSV(
+        subject: widget.subject,
+        sessions: _sessions,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Xuất CSV thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi xuất CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isExporting = false);
+    }
+  }
+
+  Future<void> _exportToPDF() async {
+    if (_sessions.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Môn học này chưa có buổi học nào')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isExporting = true);
+    try {
+      await _exportService.exportAndShareSessionsPDF(
+        subject: widget.subject,
+        sessions: _sessions,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Xuất PDF thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi xuất PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isExporting = false);
     }
   }
 
@@ -191,6 +272,39 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
       appBar: AppBar(
         title: Text(widget.subject.subjectName),
         actions: [
+          if (isTeacher) ...[
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'export_csv') {
+                  _exportToCSV();
+                } else if (value == 'export_pdf') {
+                  _exportToPDF();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'export_csv',
+                  child: Row(
+                    children: [
+                      Icon(Icons.file_download, size: 20),
+                      SizedBox(width: 8),
+                      Text('Xuất CSV'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'export_pdf',
+                  child: Row(
+                    children: [
+                      Icon(Icons.picture_as_pdf, size: 20),
+                      SizedBox(width: 8),
+                      Text('Xuất PDF'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadSessions,
@@ -198,7 +312,18 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: _isExporting
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Đang xuất file...'),
+                ],
+              ),
+            )
+          : Column(
         children: [
           // Subject info card
           Container(

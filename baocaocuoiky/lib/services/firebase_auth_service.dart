@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import '../models/app_user.dart';
+import '../models/student.dart';
 import '../database/firebase_database_service.dart';
 
 class FirebaseAuthService {
@@ -83,6 +84,30 @@ class FirebaseAuthService {
       );
 
       await _db.createUser(user);
+
+      // If role is Student, automatically create Student record
+      if (role == UserRole.student) {
+        try {
+          // Generate student ID
+          final studentId = 'SV${DateTime.now().millisecondsSinceEpoch % 1000000}';
+          
+          final student = Student(
+            studentId: studentId,
+            name: displayName,
+            email: email,
+            phone: null,
+            classCode: null,
+            subjectIds: [],
+          );
+          
+          await _db.createStudent(student);
+          debugPrint('✅ Created Student record for: $email');
+        } catch (e) {
+          debugPrint('⚠️ Failed to create Student record: $e');
+          // Don't throw error, user account is already created
+        }
+      }
+
       _currentUser = user;
       return user;
     } on firebase_auth.FirebaseAuthException catch (e) {
@@ -134,7 +159,7 @@ class FirebaseAuthService {
       );
 
       if (credential.user == null) {
-        throw 'Đăng nhập thất bại';
+        throw 'Tài khoản hoặc mật khẩu không đúng';
       }
 
       // Load user from Firestore with timeout
@@ -202,23 +227,31 @@ class FirebaseAuthService {
       return _currentUser;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
-        throw 'Tài khoản hoặc mật khẩu không chính xác';
+        throw 'Tài khoản hoặc mật khẩu không đúng';
       } else if (e.code == 'wrong-password') {
-        throw 'Tài khoản hoặc mật khẩu không chính xác';
+        throw 'Tài khoản hoặc mật khẩu không đúng';
       } else if (e.code == 'invalid-email') {
         throw 'Email không hợp lệ';
       } else if (e.code == 'unknown' || e.message?.contains('CONFIGURATION_NOT_FOUND') == true) {
         throw 'Cần cấu hình SHA fingerprint trong Firebase Console. Xem hướng dẫn trong file get_sha.sh';
+      } else if (e.code == 'invalid-credential' || 
+                 e.code == 'invalid-verification-code' ||
+                 e.code == 'invalid-verification-id' ||
+                 e.message?.contains('credential') == true ||
+                 e.message?.contains('expired') == true ||
+                 e.message?.contains('malformed') == true) {
+        throw 'Tài khoản hoặc mật khẩu không đúng';
       }
-      throw 'Đăng nhập thất bại: ${e.message}';
+      throw 'Tài khoản hoặc mật khẩu không đúng';
     } catch (e) {
       if (e.toString().contains('timeout')) {
         throw e.toString();
       }
       if (e.toString().contains('Sai tài khoản') || e.toString().contains('Sai mật khẩu')) {
-        throw 'Sai tài khoản hoặc mật khẩu';
+        throw 'Tài khoản hoặc mật khẩu không đúng';
       }
-      throw 'Đăng nhập thất bại: $e';
+      // For any other error, show generic login error message
+      throw 'Tài khoản hoặc mật khẩu không đúng';
     }
   }
 
@@ -474,6 +507,30 @@ class FirebaseAuthService {
       );
 
       await _db.createUser(user);
+
+      // If role is Student, automatically create Student record
+      if (role == UserRole.student) {
+        try {
+          // Generate student ID (could be customized)
+          final studentId = 'SV${DateTime.now().millisecondsSinceEpoch % 1000000}';
+          
+          final student = Student(
+            studentId: studentId,
+            name: displayName,
+            email: email,
+            phone: null,
+            classCode: null,
+            subjectIds: [],
+          );
+          
+          await _db.createStudent(student);
+          debugPrint('✅ Created Student record for: $email');
+        } catch (e) {
+          debugPrint('⚠️ Failed to create Student record: $e');
+          // Don't throw error, user account is already created
+        }
+      }
+
       return user;
     } on firebase_auth.FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {

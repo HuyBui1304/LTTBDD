@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../utils/validators.dart';
+import '../models/app_user.dart';
+import '../services/firebase_auth_service.dart';
 
 class AddUserScreen extends StatefulWidget {
   const AddUserScreen({super.key});
@@ -19,6 +19,8 @@ class _AddUserScreenState extends State<AddUserScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  UserRole _selectedRole = UserRole.student; // Default role
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -42,23 +44,32 @@ class _AddUserScreenState extends State<AddUserScreen> {
   Future<void> _handleCreateUser() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.register(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-      displayName: _nameController.text.trim(),
-    );
+    setState(() => _isLoading = true);
 
-    if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã tạo tài khoản thành công!'),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      final authService = FirebaseAuthService.instance;
+      
+      // Create user with specific role
+      await authService.createUserWithRole(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        displayName: _nameController.text.trim(),
+        role: _selectedRole,
       );
-      Navigator.pop(context, true);
-    } else if (mounted && authProvider.error != null) {
-      final error = authProvider.error!;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã tạo tài khoản ${_selectedRole.displayName} thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      
+      final error = e.toString();
       final isRateLimit = error.contains('blocked') || 
                          error.contains('unusual activity') ||
                          error.contains('chặn');
@@ -121,7 +132,10 @@ class _AddUserScreenState extends State<AddUserScreen> {
           ),
         );
       }
-      authProvider.clearError();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -189,6 +203,42 @@ class _AddUserScreenState extends State<AddUserScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Role selection
+                    DropdownButtonFormField<UserRole>(
+                      value: _selectedRole,
+                      decoration: InputDecoration(
+                        labelText: 'Vai trò',
+                        prefixIcon: const Icon(Icons.badge),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      ),
+                      items: UserRole.values.map((role) {
+                        return DropdownMenuItem(
+                          value: role,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _getRoleIcon(role),
+                                color: _getRoleColor(role),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(role.displayName),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _selectedRole = value);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     // Password field
                     TextFormField(
                       controller: _passwordController,
@@ -249,30 +299,25 @@ class _AddUserScreenState extends State<AddUserScreen> {
                     const SizedBox(height: 32),
 
                     // Create button
-                    Consumer<AuthProvider>(
-                      builder: (context, authProvider, child) {
-                        return SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: FilledButton(
-                            onPressed:
-                                authProvider.isLoading ? null : _handleCreateUser,
-                            child: authProvider.isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Tạo tài khoản',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                          ),
-                        );
-                      },
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: FilledButton(
+                        onPressed: _isLoading ? null : _handleCreateUser,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Tạo tài khoản',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                      ),
                     ),
                   ],
                 ),
@@ -282,6 +327,28 @@ class _AddUserScreenState extends State<AddUserScreen> {
         ),
       ),
     );
+  }
+
+  IconData _getRoleIcon(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return Icons.admin_panel_settings;
+      case UserRole.teacher:
+        return Icons.school;
+      case UserRole.student:
+        return Icons.person;
+    }
+  }
+
+  Color _getRoleColor(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return Colors.red;
+      case UserRole.teacher:
+        return Colors.blue;
+      case UserRole.student:
+        return Colors.green;
+    }
   }
 }
 

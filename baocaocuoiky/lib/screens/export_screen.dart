@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'export_sessions_screen.dart';
 
 class ExportScreen extends StatelessWidget {
-  const ExportScreen({super.key});
+  final bool hideAppBar;
+  
+  const ExportScreen({super.key, this.hideAppBar = false});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Xuất dữ liệu'),
-      ),
-      body: ListView(
+    final body = ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 Text(
@@ -110,7 +108,17 @@ class ExportScreen extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
+            );
+    
+    if (hideAppBar) {
+      return body;
+    }
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Xuất dữ liệu'),
+      ),
+      body: body,
     );
   }
 }

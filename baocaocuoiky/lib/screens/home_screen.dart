@@ -9,7 +9,6 @@ import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import 'students_screen.dart';
 import 'subjects_screen.dart';
-import 'export_screen.dart';
 import 'users_management_screen.dart';
 import 'student_attendance_screen.dart';
 import 'login_screen.dart';
@@ -20,6 +19,7 @@ import 'add_subject_screen.dart';
 import 'add_user_screen.dart';
 import 'notifications_screen.dart';
 import 'user_notifications_screen.dart';
+import 'reports_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -326,18 +326,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ],
                                         ),
                                       ),
-                                    if (authProvider.isAdmin) const PopupMenuDivider(),
-                                    if (authProvider.isTeacher || authProvider.isAdmin)
+                                    if (authProvider.isAdmin)
                                       const PopupMenuItem(
-                                        value: 'export',
+                                        value: 'reports',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.file_download),
+                                            Icon(Icons.analytics),
                                             SizedBox(width: 12),
-                                            Text('Xuất dữ liệu'),
+                                            Text('Báo cáo & Thống kê'),
                                           ],
                                         ),
                                       ),
+                                    if (authProvider.isAdmin) const PopupMenuDivider(),
                                     const PopupMenuItem(
                                       value: 'logout',
                                       child: Row(
@@ -371,13 +371,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                           builder: (context) =>
                                               const UsersManagementScreen(),
                                         ),
-                                      );
-                                    } else if (value == 'export') {
+                                      ).then((_) => _loadData());
+                                    } else if (value == 'reports') {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              const ExportScreen(),
+                                              const ReportsScreen(),
                                         ),
                                       );
                                     }

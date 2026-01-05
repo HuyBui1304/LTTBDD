@@ -1,25 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 import '../database/database_helper.dart';
+import '../providers/auth_provider.dart';
 import '../widgets/state_widgets.dart' as custom;
 
 class StatisticsScreen extends StatefulWidget {
-  const StatisticsScreen({super.key});
+  final bool hideAppBar;
+  
+  const StatisticsScreen({super.key, this.hideAppBar = false});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
-class _StatisticsScreenState extends State<StatisticsScreen> {
+class _StatisticsScreenState extends State<StatisticsScreen> with AutomaticKeepAliveClientMixin {
   final DatabaseHelper _db = DatabaseHelper.instance;
   bool _isLoading = true;
   Map<String, int> _overallStats = {};
-  List<Map<String, dynamic>> _sessionsWithStats = [];
+  bool _hasLoaded = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
     _loadStatistics();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh when screen becomes visible (when tab is selected)
+    // Only refresh if we've already loaded once and the route is active
+    final route = ModalRoute.of(context);
+    if (_hasLoaded && route?.isCurrent == true && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadStatistics();
+      });
+    }
   }
 
   Future<void> _loadStatistics() async {
@@ -42,16 +62,18 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         totalExcused += stats['excused'] ?? 0;
       }
 
-      setState(() {
-        _overallStats = {
-          'present': totalPresent,
-          'absent': totalAbsent,
-          'late': totalLate,
-          'excused': totalExcused,
-        };
-        _sessionsWithStats = sessionsWithStats;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _overallStats = {
+            'present': totalPresent,
+            'absent': totalAbsent,
+            'late': totalLate,
+            'excused': totalExcused,
+          };
+          _isLoading = false;
+          _hasLoaded = true;
+        });
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -64,22 +86,45 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Thống kê'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: () {
-              // TODO: Export functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Tính năng đang phát triển')),
-              );
-            },
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final authProvider = context.watch<AuthProvider>();
+    
+    // Chỉ Admin mới được xem thống kê
+    if (!authProvider.isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Thống kê'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.lock,
+                size: 64,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Không có quyền truy cập',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Chỉ Admin mới có quyền xem thống kê này',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: _isLoading
+        ),
+      );
+    }
+    
+    final body = _isLoading
           ? const custom.LoadingWidget(message: 'Đang tải thống kê...')
           : RefreshIndicator(
               onRefresh: _loadStatistics,
@@ -165,71 +210,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       ),
                       const SizedBox(height: 24),
                     ],
-
-                    // Bar Chart - Sessions
-                    if (_sessionsWithStats.isNotEmpty) ...[
-                      Text(
-                        'Thống kê theo buổi học',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: SizedBox(
-                            height: 300,
-                            child: BarChart(
-                              BarChartData(
-                                alignment: BarChartAlignment.spaceAround,
-                                maxY: _getMaxYValue().toDouble(),
-                                barTouchData: BarTouchData(enabled: true),
-                                titlesData: FlTitlesData(
-                                  show: true,
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (value, meta) {
-                                        if (value.toInt() >= _sessionsWithStats.length) {
-                                          return const Text('');
-                                        }
-                                        return Padding(
-                                          padding: const EdgeInsets.only(top: 8.0),
-                                          child: Text(
-                                            'S${value.toInt() + 1}',
-                                            style: const TextStyle(fontSize: 10),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  leftTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 40,
-                                    ),
-                                  ),
-                                  topTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
-                                  ),
-                                  rightTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
-                                  ),
-                                ),
-                                borderData: FlBorderData(show: false),
-                                barGroups: _buildBarChartData(),
-                                gridData: const FlGridData(show: true),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
-            ),
+            );
+    
+    if (widget.hideAppBar) {
+      return body;
+    }
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Thống kê'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadStatistics,
+            tooltip: 'Làm mới',
+          ),
+        ],
+      ),
+      body: body,
     );
   }
 
@@ -290,37 +291,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     ];
   }
 
-  List<BarChartGroupData> _buildBarChartData() {
-    return List.generate(_sessionsWithStats.length, (index) {
-      final stats = _sessionsWithStats[index]['stats'] as Map<String, int>;
-      final present = (stats['present'] ?? 0).toDouble();
-      
-      return BarChartGroupData(
-        x: index,
-        barRods: [
-          BarChartRodData(
-            toY: present,
-            color: Colors.green,
-            width: 16,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(4),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-
-  int _getMaxYValue() {
-    int max = 0;
-    for (final item in _sessionsWithStats) {
-      final stats = item['stats'] as Map<String, int>;
-      final present = stats['present'] ?? 0;
-      if (present > max) max = present;
-    }
-    return (max * 1.2).ceil(); // Add 20% padding
-  }
 }
 
 class _StatCard extends StatelessWidget {
@@ -340,13 +310,18 @@ class _StatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                textAlign: TextAlign.center,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -354,6 +329,9 @@ class _StatCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ],
         ),

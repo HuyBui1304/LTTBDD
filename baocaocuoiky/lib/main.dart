@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/realtime_service.dart';
@@ -22,6 +23,15 @@ void main() async {
         throw TimeoutException('Firebase initialization timeout');
       },
     );
+    
+    // Enable Firestore offline persistence
+    try {
+      await FirebaseFirestore.instance.enablePersistence();
+      debugPrint('✅ Firestore offline persistence enabled');
+    } catch (e) {
+      debugPrint('⚠️ Firestore offline persistence error: $e');
+      // Continue anyway - persistence might already be enabled
+    }
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
     // Continue anyway - Firebase might work with retry

@@ -87,6 +87,17 @@ class _CreateNotificationScreenState extends State<CreateNotificationScreen> {
         setState(() {
           _allUsers = users;
           _allSubjects = subjects;
+          
+          // Reset selected user if it's no longer in the list
+          if (_selectedUser != null && !users.any((u) => u.uid == _selectedUser!.uid)) {
+            _selectedUser = null;
+          }
+          
+          // Reset selected class if it's no longer in the list
+          if (_selectedClassCode != null && !subjects.any((s) => s.classCode == _selectedClassCode)) {
+            _selectedClassCode = null;
+          }
+          
           _isLoading = false;
         });
       }
@@ -191,6 +202,13 @@ class _CreateNotificationScreenState extends State<CreateNotificationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tạo thông báo'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadUsers,
+            tooltip: 'Làm mới danh sách',
+          ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -364,16 +382,23 @@ class _CreateNotificationScreenState extends State<CreateNotificationScreen> {
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : DropdownButtonFormField<AppUser>(
-                        value: _selectedUser,
+                        value: _selectedUser != null && 
+                               _allUsers.any((u) => u.uid == _selectedUser!.uid)
+                            ? _allUsers.firstWhere((u) => u.uid == _selectedUser!.uid)
+                            : null,
                         decoration: const InputDecoration(
                           labelText: 'Chọn người dùng',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.person),
                         ),
+                        isExpanded: true,
                         items: _allUsers.map((user) {
                           return DropdownMenuItem(
                             value: user,
-                            child: Text('${user.displayName} (${user.email})'),
+                            child: Text(
+                              '${user.displayName} (${user.email})',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           );
                         }).toList(),
                         onChanged: (user) {
@@ -409,7 +434,10 @@ class _CreateNotificationScreenState extends State<CreateNotificationScreen> {
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : DropdownButtonFormField<String>(
-                        value: _selectedClassCode,
+                        value: _selectedClassCode != null && 
+                               _allSubjects.any((s) => s.classCode == _selectedClassCode)
+                            ? _selectedClassCode
+                            : null,
                         decoration: const InputDecoration(
                           labelText: 'Chọn lớp học',
                           border: OutlineInputBorder(),

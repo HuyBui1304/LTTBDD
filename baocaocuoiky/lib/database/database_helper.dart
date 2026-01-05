@@ -26,6 +26,7 @@ class DatabaseHelper {
   // Delegate all methods to FirebaseDatabaseService
   Future<Student> createStudent(Student student) => _firebaseService.createStudent(student);
   Future<Student?> getStudent(int id) => _firebaseService.getStudent(id);
+  Future<Student?> getStudentByEmail(String email) => _firebaseService.getStudentByEmail(email);
   Future<List<Student>> getAllStudents() => _firebaseService.getAllStudents();
   Future<List<Student>> searchStudents(String query) => _firebaseService.searchStudents(query);
   Future<List<Student>> getStudentsByClass(String classCode) => _firebaseService.getStudentsByClass(classCode);
@@ -93,6 +94,8 @@ class DatabaseHelper {
   Future<AttendanceSession?> getSessionByCode(String sessionCode) => _firebaseService.getSessionByCode(sessionCode);
   Future<List<AttendanceSession>> getSessionsByStudentClass(String classCode) => _firebaseService.getSessionsByStudentClass(classCode);
   Future<List<Map<String, dynamic>>> getQrTokensBySession(int sessionId) => _firebaseService.getQrTokensBySession(sessionId);
+  Future<Map<String, dynamic>?> findQrTokenByCode4Digits(String code4Digits) => _firebaseService.findQrTokenByCode4Digits(code4Digits);
+  Future<Map<String, dynamic>?> getQrTokenByCode4Digits(String code4Digits) => _firebaseService.getQrTokenByCode4Digits(code4Digits);
   Future<int> deleteExpiredQrTokens() => _firebaseService.deleteExpiredQrTokens();
   Future<List<Map<String, dynamic>>> getAllExportHistory() => _firebaseService.getAllExportHistory();
   Future<void> deleteExportHistory(int id) => _firebaseService.deleteExportHistory(id);

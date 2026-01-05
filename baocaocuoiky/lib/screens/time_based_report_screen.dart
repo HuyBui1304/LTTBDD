@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../database/database_helper.dart';
 import '../models/attendance_session.dart';
+import '../models/subject.dart';
+import '../providers/auth_provider.dart';
+import '../services/export_service.dart';
 
 enum ReportPeriod { day, week, month }
 
 class TimeBasedReportScreen extends StatefulWidget {
-  const TimeBasedReportScreen({super.key});
+  final bool hideAppBar;
+  
+  const TimeBasedReportScreen({super.key, this.hideAppBar = false});
 
   @override
   State<TimeBasedReportScreen> createState() => _TimeBasedReportScreenState();
 }
 
-class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
+class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> with AutomaticKeepAliveClientMixin {
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final ExportService _exportService = ExportService.instance;
 
   ReportPeriod _selectedPeriod = ReportPeriod.week;
   DateTime _selectedDate = DateTime.now();
@@ -23,11 +30,57 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
   Map<String, int> _currentStats = {};
   Map<String, int> _previousStats = {};
   List<AttendanceSession> _sessions = [];
+  
+  // Subject filter
+  List<Subject> _allSubjects = [];
+  Subject? _selectedSubject; // null = "Toàn bộ"
+  bool _hasLoaded = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    _loadSubjects();
     _loadReport();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh when screen becomes visible (when tab is selected)
+    final route = ModalRoute.of(context);
+    if (_hasLoaded && route?.isCurrent == true && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _loadSubjects();
+          _loadReport();
+        }
+      });
+    }
+  }
+
+  Future<void> _loadSubjects() async {
+    try {
+      final subjects = await _db.getAllSubjects();
+      if (mounted) {
+        setState(() {
+          _allSubjects = subjects;
+          // Ensure _selectedSubject still exists in the new list
+          if (_selectedSubject != null && _selectedSubject!.id != null) {
+            try {
+              final found = subjects.firstWhere((s) => s.id == _selectedSubject!.id);
+              _selectedSubject = found; // Update to new reference
+            } catch (e) {
+              _selectedSubject = null; // Reset if not found
+            }
+          }
+        });
+      }
+    } catch (e) {
+      // Ignore error, can still use without subject filter
+    }
   }
 
   Future<void> _loadReport() async {
@@ -36,8 +89,17 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
       final dateRange = _getDateRange();
       final previousRange = _getPreviousDateRange();
 
-      // Get sessions in range
-      final allSessions = await _db.getAllSessions();
+      // Get sessions - filter by subject if selected
+      List<AttendanceSession> allSessions;
+      if (_selectedSubject != null && _selectedSubject!.id != null) {
+        // Use database method to get sessions by subject
+        allSessions = await _db.getSessionsBySubject(_selectedSubject!.id!);
+      } else {
+        // Get all sessions
+        allSessions = await _db.getAllSessions();
+      }
+      
+      // Filter by date range
       _sessions = allSessions.where((s) {
         return s.sessionDate != null &&
             s.sessionDate!.isAfter(dateRange.$1) &&
@@ -54,9 +116,22 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
       _currentStats = await _calculateStats(_sessions);
       _previousStats = await _calculateStats(previousSessions);
 
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasLoaded = true;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải báo cáo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -131,17 +206,46 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Báo cáo theo thời gian'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _showExportOptions,
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final authProvider = context.watch<AuthProvider>();
+    
+    // Kiểm tra quyền nếu không phải trong tab
+    if (!widget.hideAppBar && !authProvider.isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Báo cáo theo thời gian'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.lock,
+                size: 64,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Không có quyền truy cập',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Chỉ Admin mới có quyền xem báo cáo này',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: _isLoading
+        ),
+      );
+    }
+    
+    // Body content
+    final bodyContent = _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadReport,
@@ -151,6 +255,10 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Subject Filter
+                    _buildSubjectFilter(),
+                    const SizedBox(height: 16),
+                    
                     // Period Selector
                     _buildPeriodSelector(),
                     const SizedBox(height: 16),
@@ -176,7 +284,104 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
                   ],
                 ),
               ),
+            );
+    
+    // Return with or without AppBar based on hideAppBar flag
+    if (widget.hideAppBar) {
+      return bodyContent;
+    }
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Báo cáo theo thời gian'),
+            if (_selectedSubject != null)
+              Text(
+                _selectedSubject!.subjectName,
+                style: const TextStyle(fontSize: 12),
+              ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _loadSubjects();
+              _loadReport();
+            },
+            tooltip: 'Làm mới',
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_download),
+            onPressed: _showExportOptions,
+            tooltip: 'Xuất & Chia sẻ',
+          ),
+        ],
+      ),
+      body: bodyContent,
+    );
+  }
+
+  Widget _buildSubjectFilter() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Môn học',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<Subject?>(
+              value: _selectedSubject != null && _selectedSubject!.id != null
+                  ? _allSubjects.where((s) => s.id == _selectedSubject!.id).isNotEmpty
+                      ? _allSubjects.firstWhere((s) => s.id == _selectedSubject!.id)
+                      : null
+                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Chọn môn học',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.book),
+              ),
+              isExpanded: true,
+              items: [
+                const DropdownMenuItem<Subject?>(
+                  value: null,
+                  child: Row(
+                    children: [
+                      Icon(Icons.all_inclusive, size: 20),
+                      SizedBox(width: 8),
+                      Text('Toàn bộ môn học', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                ..._allSubjects.map((subject) {
+                  return DropdownMenuItem<Subject?>(
+                    value: subject,
+                    child: Text(
+                      '${subject.subjectCode} - ${subject.subjectName}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+              ],
+              onChanged: (subject) {
+                setState(() {
+                  _selectedSubject = subject;
+                  _loadReport();
+                });
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -308,8 +513,8 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
           children: [
             Expanded(
               child: _StatCard(
-                title: 'Buổi học',
-                value: '${_currentStats['sessions'] ?? 0}',
+                title: 'Có phép',
+                value: '${_currentStats['excused'] ?? 0}',
                 color: Colors.blue,
               ),
             ),
@@ -339,6 +544,18 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
                 title: 'Muộn',
                 value: '${_currentStats['late'] ?? 0}',
                 color: Colors.orange,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                title: 'Buổi học',
+                value: '${_currentStats['sessions'] ?? 0}',
+                color: Colors.black,
               ),
             ),
           ],
@@ -377,6 +594,18 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
               'Vắng',
               _currentStats['absent'] ?? 0,
               _previousStats['absent'] ?? 0,
+            ),
+            const Divider(),
+            _buildComparisonRow(
+              'Muộn',
+              _currentStats['late'] ?? 0,
+              _previousStats['late'] ?? 0,
+            ),
+            const Divider(),
+            _buildComparisonRow(
+              'Có phép',
+              _currentStats['excused'] ?? 0,
+              _previousStats['excused'] ?? 0,
             ),
           ],
         ),
@@ -490,6 +719,17 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
                         color: Colors.white,
                       ),
                     ),
+                    PieChartSectionData(
+                      color: Colors.blue,
+                      value: (_currentStats['excused'] ?? 0).toDouble(),
+                      title: '${_currentStats['excused']}',
+                      radius: 60,
+                      titleStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                   ],
                   centerSpaceRadius: 40,
                   sectionsSpace: 2,
@@ -566,37 +806,51 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Xuất báo cáo',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ),
+              const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.table_chart),
+                leading: const Icon(Icons.table_chart, color: Colors.green),
                 title: const Text('Xuất CSV'),
+                subtitle: const Text('Lưu vào thiết bị'),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Export to CSV
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đang xuất CSV...')),
-                  );
+                  _exportToCSV();
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.picture_as_pdf),
+                leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
                 title: const Text('Xuất PDF'),
+                subtitle: const Text('Lưu vào thiết bị'),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Export to PDF
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đang xuất PDF...')),
-                  );
+                  _exportToPDF();
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.blue),
+                title: const Text('Chia sẻ CSV'),
+                subtitle: const Text('Gửi qua email, WhatsApp, v.v.'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareReport('csv');
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.share),
-                title: const Text('Chia sẻ'),
+                leading: const Icon(Icons.share, color: Colors.orange),
+                title: const Text('Chia sẻ PDF'),
+                subtitle: const Text('Gửi qua email, WhatsApp, v.v.'),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Share report
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đang chia sẻ...')),
-                  );
+                  _shareReport('pdf');
                 },
               ),
             ],
@@ -604,6 +858,111 @@ class _TimeBasedReportScreenState extends State<TimeBasedReportScreen> {
         );
       },
     );
+  }
+
+  Future<void> _exportToCSV() async {
+    try {
+      final dateRange = _getDateRange();
+      final periodName = _selectedPeriod == ReportPeriod.day ? 'ngay' 
+                       : _selectedPeriod == ReportPeriod.week ? 'tuan' 
+                       : 'thang';
+      
+      await _exportService.shareTimeBasedReport(
+        period: periodName,
+        startDate: dateRange.$1,
+        endDate: dateRange.$2,
+        stats: _currentStats,
+        format: 'csv',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xuất báo cáo CSV thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi xuất CSV: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportToPDF() async {
+    try {
+      final dateRange = _getDateRange();
+      final periodName = _selectedPeriod == ReportPeriod.day ? 'ngay' 
+                       : _selectedPeriod == ReportPeriod.week ? 'tuan' 
+                       : 'thang';
+      
+      await _exportService.shareTimeBasedReport(
+        period: periodName,
+        startDate: dateRange.$1,
+        endDate: dateRange.$2,
+        stats: _currentStats,
+        format: 'pdf',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xuất báo cáo PDF thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi xuất PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareReport(String format) async {
+    try {
+      final dateRange = _getDateRange();
+      final periodName = _selectedPeriod == ReportPeriod.day ? 'ngay' 
+                       : _selectedPeriod == ReportPeriod.week ? 'tuan' 
+                       : 'thang';
+      
+      await _exportService.shareTimeBasedReport(
+        period: periodName,
+        startDate: dateRange.$1,
+        endDate: dateRange.$2,
+        stats: _currentStats,
+        format: format,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã chia sẻ báo cáo ${format.toUpperCase()} thành công!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi chia sẻ: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 
@@ -624,13 +983,18 @@ class _StatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                textAlign: TextAlign.center,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -638,6 +1002,9 @@ class _StatCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ],
         ),

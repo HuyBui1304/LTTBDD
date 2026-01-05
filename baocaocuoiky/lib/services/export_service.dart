@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:csv/csv.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/attendance_session.dart';
 import '../models/attendance_record.dart';
 import '../models/export_history.dart';
@@ -13,8 +16,59 @@ import '../database/database_helper.dart';
 class ExportService {
   static final ExportService instance = ExportService._init();
   final DatabaseHelper _db = DatabaseHelper.instance;
+  pw.Font? _vietnameseFont;
+  bool _fontLoaded = false;
 
   ExportService._init();
+
+  // Load Vietnamese font from assets
+  Future<void> _loadVietnameseFont() async {
+    if (_fontLoaded) return;
+    
+    try {
+      // Try to load Noto Sans font from assets
+      final fontData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+      _vietnameseFont = pw.Font.ttf(fontData);
+      _fontLoaded = true;
+    } catch (e) {
+      // If font not found, try other common Vietnamese fonts
+      try {
+        final fontData = await rootBundle.load('assets/fonts/NotoSans-Vietnamese.ttf');
+        _vietnameseFont = pw.Font.ttf(fontData);
+        _fontLoaded = true;
+      } catch (e2) {
+        try {
+          final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+          _vietnameseFont = pw.Font.ttf(fontData);
+          _fontLoaded = true;
+        } catch (e3) {
+          // Font not available, will use default font
+          _fontLoaded = true;
+        }
+      }
+    }
+  }
+
+  // Get text style with Vietnamese font
+  pw.TextStyle _getTextStyle({
+    double fontSize = 12,
+    pw.FontWeight fontWeight = pw.FontWeight.normal,
+    PdfColor? color,
+  }) {
+    if (_vietnameseFont != null) {
+      return pw.TextStyle(
+        font: _vietnameseFont,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+      );
+    }
+    return pw.TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+    );
+  }
 
   // Log export to history
   Future<void> _logExport({
@@ -280,6 +334,10 @@ class ExportService {
   Future<String> _saveCSV(List<List<dynamic>> rows, String filename) async {
     final String csv = const ListToCsvConverter().convert(rows);
     
+    // Thêm UTF-8 BOM để Excel có thể mở được file với tiếng Việt
+    final utf8Bom = '\uFEFF';
+    final csvWithBom = utf8Bom + csv;
+    
     // Lưu vào Downloads thay vì app documents
     Directory? directory;
     if (Platform.isAndroid) {
@@ -297,7 +355,8 @@ class ExportService {
     final path = '${directory!.path}/${filename}_$timestamp.csv';
     
     final File file = File(path);
-    await file.writeAsString(csv);
+    // Ghi file với UTF-8 encoding
+    await file.writeAsString(csvWithBom, encoding: const Utf8Codec());
     
     return path;
   }
@@ -329,6 +388,7 @@ class ExportService {
   // Export students to PDF
   Future<String> exportStudentsToPDF() async {
     try {
+      await _loadVietnameseFont();
       final students = await _db.getAllStudents();
       final pdf = pw.Document();
 
@@ -339,11 +399,13 @@ class ExportService {
             pw.Header(
               level: 0,
               child: pw.Text('DANH SÁCH SINH VIÊN',
-                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  style: _getTextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
             ),
             pw.SizedBox(height: 20),
-            pw.Text('Ngày xuất: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}'),
-            pw.Text('Tổng số: ${students.length} sinh viên'),
+            pw.Text('Ngày xuất: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+                style: _getTextStyle()),
+            pw.Text('Tổng số: ${students.length} sinh viên',
+                style: _getTextStyle()),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
               headers: ['STT', 'Mã SV', 'Họ tên', 'Email', 'SĐT', 'Mã lớp'],
@@ -376,6 +438,7 @@ class ExportService {
   // Export attendance to PDF
   Future<String> exportAttendanceToPDF(int sessionId) async {
     try {
+      await _loadVietnameseFont();
       final session = await _db.getSession(sessionId);
       if (session == null) throw Exception('Session not found');
 
@@ -394,15 +457,19 @@ class ExportService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('BẢNG ĐIỂM DANH',
-                      style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                      style: _getTextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 10),
                   pw.Text('Buổi học: ${session.title}',
-                      style: const pw.TextStyle(fontSize: 16)),
-                  pw.Text('Mã buổi: ${session.sessionCode}'),
-                  pw.Text('Ngày: ${session.sessionDate != null ? DateFormat('dd/MM/yyyy HH:mm').format(session.sessionDate!) : 'Chưa có ngày'}'),
-                  pw.Text('Lớp: ${session.classCode}'),
+                      style: _getTextStyle(fontSize: 16)),
+                  pw.Text('Mã buổi: ${session.sessionCode}',
+                      style: _getTextStyle()),
+                  pw.Text('Ngày: ${session.sessionDate != null ? DateFormat('dd/MM/yyyy HH:mm').format(session.sessionDate!) : 'Chưa có ngày'}',
+                      style: _getTextStyle()),
+                  pw.Text('Lớp: ${session.classCode}',
+                      style: _getTextStyle()),
                   if (session.location != null)
-                    pw.Text('Địa điểm: ${session.location}'),
+                    pw.Text('Địa điểm: ${session.location}',
+                        style: _getTextStyle()),
                 ],
               ),
             ),
@@ -431,30 +498,31 @@ class ExportService {
             pw.TableHelper.fromTextArray(
               headers: ['STT', 'Mã SV', 'Họ tên', 'Trạng thái', 'Giờ check-in', 'Ghi chú'],
               data: tableData,
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              headerStyle: _getTextStyle(fontWeight: pw.FontWeight.bold),
               cellAlignment: pw.Alignment.centerLeft,
               headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              cellStyle: _getTextStyle(),
             ),
 
             pw.SizedBox(height: 30),
             pw.Text('Ký tên:',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                style: _getTextStyle(fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 50),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Column(
                   children: [
-                    pw.Text('Giảng viên'),
+                    pw.Text('Giảng viên', style: _getTextStyle()),
                     pw.SizedBox(height: 50),
-                    pw.Text('(Ký và ghi rõ họ tên)'),
+                    pw.Text('(Ký và ghi rõ họ tên)', style: _getTextStyle()),
                   ],
                 ),
                 pw.Column(
                   children: [
-                    pw.Text('Sinh viên lớp trưởng'),
+                    pw.Text('Sinh viên lớp trưởng', style: _getTextStyle()),
                     pw.SizedBox(height: 50),
-                    pw.Text('(Ký và ghi rõ họ tên)'),
+                    pw.Text('(Ký và ghi rõ họ tên)', style: _getTextStyle()),
                   ],
                 ),
               ],
@@ -472,6 +540,7 @@ class ExportService {
   // Export full report to PDF
   Future<String> exportFullReportToPDF() async {
     try {
+      await _loadVietnameseFont();
       final students = await _db.getAllStudents();
       final sessions = await _db.getAllSessions();
       
@@ -491,18 +560,19 @@ class ExportService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(session.title,
-                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Mã: ${session.sessionCode} | Lớp: ${session.classCode} | Ngày: ${session.sessionDate != null ? DateFormat('dd/MM/yyyy').format(session.sessionDate!) : 'Chưa có ngày'}'),
+                    style: _getTextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Mã: ${session.sessionCode} | Lớp: ${session.classCode} | Ngày: ${session.sessionDate != null ? DateFormat('dd/MM/yyyy').format(session.sessionDate!) : 'Chưa có ngày'}',
+                    style: _getTextStyle()),
                 pw.SizedBox(height: 5),
                 pw.Row(
                   children: [
-                    pw.Text('Có mặt: ${stats['present']}', style: const pw.TextStyle(color: PdfColors.green)),
+                    pw.Text('Có mặt: ${stats['present']}', style: _getTextStyle(color: PdfColors.green)),
                     pw.SizedBox(width: 15),
-                    pw.Text('Vắng: ${stats['absent']}', style: const pw.TextStyle(color: PdfColors.red)),
+                    pw.Text('Vắng: ${stats['absent']}', style: _getTextStyle(color: PdfColors.red)),
                     pw.SizedBox(width: 15),
-                    pw.Text('Muộn: ${stats['late']}', style: const pw.TextStyle(color: PdfColors.orange)),
+                    pw.Text('Muộn: ${stats['late']}', style: _getTextStyle(color: PdfColors.orange)),
                     pw.SizedBox(width: 15),
-                    pw.Text('Có phép: ${stats['excused']}', style: const pw.TextStyle(color: PdfColors.blue)),
+                    pw.Text('Có phép: ${stats['excused']}', style: _getTextStyle(color: PdfColors.blue)),
                   ],
                 ),
               ],
@@ -523,9 +593,10 @@ class ExportService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('BÁO CÁO TỔNG HỢP ĐIỂM DANH',
-                      style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                      style: _getTextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 10),
-                  pw.Text('Ngày xuất: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}'),
+                  pw.Text('Ngày xuất: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+                      style: _getTextStyle()),
                 ],
               ),
             ),
@@ -542,10 +613,12 @@ class ExportService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('TỔNG QUAN',
-                      style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                      style: _getTextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 10),
-                  pw.Text('Tổng số sinh viên: ${students.length}'),
-                  pw.Text('Tổng số buổi học: ${sessions.length}'),
+                  pw.Text('Tổng số sinh viên: ${students.length}',
+                      style: _getTextStyle()),
+                  pw.Text('Tổng số buổi học: ${sessions.length}',
+                      style: _getTextStyle()),
                 ],
               ),
             ),
@@ -553,7 +626,7 @@ class ExportService {
 
             // Sessions summary
             pw.Text('CHI TIẾT CÁC BUỔI HỌC',
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                style: _getTextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             
             ...sessionWidgets,
@@ -588,8 +661,8 @@ class ExportService {
     return pw.Column(
       children: [
         pw.Text(value.toString(),
-            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: color)),
-        pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
+            style: _getTextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: color)),
+        pw.Text(label, style: _getTextStyle(fontSize: 10)),
       ],
     );
   }
@@ -615,6 +688,222 @@ class ExportService {
     await file.writeAsBytes(await pdf.save());
     
     return path;
+  }
+
+  // ========== SHARE METHODS ==========
+
+  /// Share a file (CSV or PDF)
+  Future<void> shareFile({
+    required String filePath,
+    String? subject,
+    String? text,
+  }) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw 'File không tồn tại: $filePath';
+      }
+
+      final xFile = XFile(filePath);
+      await Share.shareXFiles(
+        [xFile],
+        subject: subject,
+        text: text,
+      );
+    } catch (e) {
+      throw 'Chia sẻ thất bại: $e';
+    }
+  }
+
+  /// Export and share sessions as CSV
+  Future<void> exportAndShareSessionsCSV({
+    required Subject subject,
+    required List<AttendanceSession> sessions,
+  }) async {
+    try {
+      // Export to CSV
+      final filePath = await exportSessionsBySubjectToCSV(
+        subject: subject,
+        sessions: sessions,
+      );
+
+      // Share the file
+      await shareFile(
+        filePath: filePath,
+        subject: 'Dữ liệu điểm danh - ${subject.subjectName}',
+        text: 'Dữ liệu điểm danh môn ${subject.subjectName} (${sessions.length} buổi học)',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Export sessions by subject to PDF
+  Future<String> exportSessionsBySubjectToPDF({
+    required Subject subject,
+    required List<AttendanceSession> sessions,
+  }) async {
+    try {
+      await _loadVietnameseFont();
+      final pdf = pw.Document();
+      
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Text(
+                  'DANH SÁCH BUỔI HỌC',
+                  style: _getTextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text('Môn học: ${subject.subjectName}',
+                  style: _getTextStyle()),
+              pw.Text('Mã môn: ${subject.subjectCode}',
+                  style: _getTextStyle()),
+              pw.Text('Lớp: ${subject.classCode}',
+                  style: _getTextStyle()),
+              pw.Text('Ngày xuất: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+                  style: _getTextStyle()),
+              pw.SizedBox(height: 20),
+              pw.TableHelper.fromTextArray(
+                headers: ['STT', 'Buổi', 'Tiêu đề', 'Ngày học', 'Trạng thái'],
+                headerStyle: _getTextStyle(fontWeight: pw.FontWeight.bold),
+                cellStyle: _getTextStyle(),
+                data: sessions.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final session = entry.value;
+                  return [
+                    '${i + 1}',
+                    'Buổi ${session.sessionNumber}',
+                    session.title,
+                    session.sessionDate != null
+                        ? DateFormat('dd/MM/yyyy HH:mm').format(session.sessionDate!)
+                        : 'Chưa có ngày',
+                    _getSessionStatusText(session.status),
+                  ];
+                }).toList(),
+              ),
+            ];
+          },
+        ),
+      );
+
+      return await _savePDF(pdf, 'sessions_${subject.subjectCode}');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Export and share sessions as PDF
+  Future<void> exportAndShareSessionsPDF({
+    required Subject subject,
+    required List<AttendanceSession> sessions,
+  }) async {
+    try {
+      // Export to PDF
+      final filePath = await exportSessionsBySubjectToPDF(
+        subject: subject,
+        sessions: sessions,
+      );
+
+      // Share the file
+      await shareFile(
+        filePath: filePath,
+        subject: 'Báo cáo điểm danh - ${subject.subjectName}',
+        text: 'Báo cáo điểm danh môn ${subject.subjectName} (${sessions.length} buổi học)',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Create and share time-based report
+  Future<void> shareTimeBasedReport({
+    required String period, // 'day', 'week', 'month'
+    required DateTime startDate,
+    required DateTime endDate,
+    required Map<String, int> stats,
+    required String format, // 'csv' or 'pdf'
+  }) async {
+    try {
+      String filePath;
+      
+      if (format == 'csv') {
+        // Create CSV report
+        final List<List<dynamic>> rows = [
+          ['Báo cáo theo thời gian'],
+          ['Kỳ báo cáo', period == 'day' ? 'Ngày' : period == 'week' ? 'Tuần' : 'Tháng'],
+          ['Từ ngày', DateFormat('dd/MM/yyyy').format(startDate)],
+          ['Đến ngày', DateFormat('dd/MM/yyyy').format(endDate)],
+          [],
+          ['Thống kê', 'Số lượng'],
+          ['Tổng buổi học', stats['sessions'] ?? 0],
+          ['Có mặt', stats['present'] ?? 0],
+          ['Vắng mặt', stats['absent'] ?? 0],
+          ['Đi muộn', stats['late'] ?? 0],
+          ['Có phép', stats['excused'] ?? 0],
+        ];
+
+        filePath = await _saveCSV(rows, 'report_$period');
+      } else {
+        // Create PDF report
+        final pdf = pw.Document();
+        
+        pdf.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            build: (pw.Context context) {
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'BÁO CÁO ĐIỂM DANH THEO THỜI GIAN',
+                    style: _getTextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 20),
+                  pw.Text('Kỳ báo cáo: ${period == 'day' ? 'Ngày' : period == 'week' ? 'Tuần' : 'Tháng'}',
+                      style: _getTextStyle()),
+                  pw.Text('Từ ngày: ${DateFormat('dd/MM/yyyy').format(startDate)}',
+                      style: _getTextStyle()),
+                  pw.Text('Đến ngày: ${DateFormat('dd/MM/yyyy').format(endDate)}',
+                      style: _getTextStyle()),
+                  pw.SizedBox(height: 20),
+                  pw.Divider(),
+                  pw.SizedBox(height: 20),
+                  pw.Text('THỐNG KÊ:', style: _getTextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 10),
+                  pw.Text('Tổng buổi học: ${stats['sessions'] ?? 0}',
+                      style: _getTextStyle()),
+                  pw.Text('Có mặt: ${stats['present'] ?? 0}',
+                      style: _getTextStyle()),
+                  pw.Text('Vắng mặt: ${stats['absent'] ?? 0}',
+                      style: _getTextStyle()),
+                  pw.Text('Đi muộn: ${stats['late'] ?? 0}',
+                      style: _getTextStyle()),
+                  pw.Text('Có phép: ${stats['excused'] ?? 0}',
+                      style: _getTextStyle()),
+                ],
+              );
+            },
+          ),
+        );
+
+        filePath = await _savePDF(pdf, 'report_$period');
+      }
+
+      // Share the file
+      await shareFile(
+        filePath: filePath,
+        subject: 'Báo cáo điểm danh theo ${period == 'day' ? 'ngày' : period == 'week' ? 'tuần' : 'tháng'}',
+        text: 'Báo cáo điểm danh từ ${DateFormat('dd/MM/yyyy').format(startDate)} đến ${DateFormat('dd/MM/yyyy').format(endDate)}',
+      );
+    } catch (e) {
+      throw 'Chia sẻ báo cáo thất bại: $e';
+    }
   }
 }
 

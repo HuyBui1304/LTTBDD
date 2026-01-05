@@ -81,6 +81,69 @@ class _AdminSubjectDetailScreenState extends State<AdminSubjectDetailScreen> {
     }
   }
 
+  Future<void> _deleteSubject() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa môn học "${widget.subject.subjectName}"?\n\nLưu ý: Tất cả buổi học và dữ liệu điểm danh liên quan sẽ bị xóa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      if (widget.subject.id != null) {
+        await _db.deleteSubject(widget.subject.id!);
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context, true); // Return to previous screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã xóa môn học thành công'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa môn học: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,6 +164,12 @@ class _AdminSubjectDetailScreenState extends State<AdminSubjectDetailScreen> {
               }
             },
             tooltip: 'Chỉnh sửa',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _deleteSubject,
+            tooltip: 'Xóa môn học',
+            color: Colors.red,
           ),
         ],
       ),

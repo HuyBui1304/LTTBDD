@@ -142,13 +142,17 @@ class _AdminSubjectsScreenState extends State<AdminSubjectsScreen> {
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: InkWell(
-                              onTap: () {
-                                Navigator.push(
+                              onTap: () async {
+                                final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => AdminSubjectDetailScreen(subject: subject),
                                   ),
                                 );
+                                // Reload if subject was deleted
+                                if (result == true && mounted) {
+                                  _loadSubjects();
+                                }
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Padding(
@@ -156,11 +160,23 @@ class _AdminSubjectsScreenState extends State<AdminSubjectsScreen> {
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        subject.subjectName,
-                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            subject.subjectName,
+                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${subject.subjectCode} - ${subject.classCode}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Colors.grey,
+                                                ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     const Icon(Icons.chevron_right, color: Colors.grey),
