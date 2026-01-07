@@ -51,25 +51,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _handleGoogleSignIn() async {
-    final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.signInWithGoogle();
-
-    if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
-    } else if (mounted && authProvider.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.error!),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      authProvider.clearError();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,45 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     'Đăng nhập',
                                     style: TextStyle(fontSize: 16),
                                   ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Divider
-                    Row(
-                      children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'HOẶC',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                        const Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Google Sign In button
-                    Consumer<AuthProvider>(
-                      builder: (context, authProvider, child) {
-                        return SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: authProvider.isLoading
-                                ? null
-                                : _handleGoogleSignIn,
-                            icon: Image.asset(
-                              'assets/google_logo.png',
-                              height: 24,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Icon(Icons.g_mobiledata, size: 24),
-                            ),
-                            label: const Text('Đăng nhập với Google'),
                           ),
                         );
                       },

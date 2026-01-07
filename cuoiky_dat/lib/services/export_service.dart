@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/student.dart';
 import '../models/class_schedule.dart';
+import '../models/user_progress.dart';
+import '../models/topic.dart';
 
 class ExportService {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
@@ -510,6 +512,265 @@ class ExportService {
                           pw.Padding(
                             padding: const pw.EdgeInsets.all(4),
                             child: pw.Text(e.value.toString(), style: const pw.TextStyle(fontSize: 10)),
+                          ),
+                        ],
+                      )),
+                ],
+              ),
+            ],
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+  }
+
+  // LMS Statistics Export
+  Future<void> exportLMSStatistics(
+    int totalQuestions,
+    int totalQuizzes,
+    int totalQuizResults,
+    Map<String, int> questionsByTopic,
+    Map<String, int> questionsByDifficulty,
+    List<UserProgress> userProgress,
+    double averageScore,
+    List<Topic> topics,
+  ) async {
+    final difficultyLabels = {'1': 'Dễ', '2': 'Trung bình', '3': 'Khó'};
+
+    final List<List<dynamic>> rows = [
+      ['THỐNG KÊ HỌC TẬP'],
+      [],
+      ['Tổng số câu hỏi', totalQuestions],
+      ['Tổng số đề thi', totalQuizzes],
+      ['Tổng số bài đã làm', totalQuizResults],
+      ['Điểm trung bình', averageScore.toStringAsFixed(1)],
+      [],
+      ['CÂU HỎI THEO CHỦ ĐỀ'],
+      ['Chủ đề', 'Số lượng'],
+      ...questionsByTopic.entries.map((e) {
+        final topicId = int.tryParse(e.key);
+        final topic = topics.firstWhere(
+          (t) => t.id == topicId,
+          orElse: () => Topic(id: -1, name: 'Unknown', description: '', createdAt: DateTime.now()),
+        );
+        return [topic.name, e.value];
+      }),
+      [],
+      ['CÂU HỎI THEO ĐỘ KHÓ'],
+      ['Độ khó', 'Số lượng'],
+      ...questionsByDifficulty.entries.map((e) => [
+        difficultyLabels[e.key] ?? e.key,
+        e.value,
+      ]),
+      [],
+      ['TIẾN ĐỘ HỌC TẬP'],
+      ['Chủ đề', 'Tổng câu', 'Đúng', 'Sai', 'Điểm TB'],
+      ...userProgress.map((p) => [
+        p.topicName,
+        p.totalQuestions,
+        p.correctAnswers,
+        p.wrongAnswers,
+        '${p.averageScore.toStringAsFixed(1)}%',
+      ]),
+    ];
+
+    await _exportToCSV('thong_ke_hoc_tap.csv', rows);
+  }
+
+  Future<void> exportLMSStatisticsPDF(
+    int totalQuestions,
+    int totalQuizzes,
+    int totalQuizResults,
+    Map<String, int> questionsByTopic,
+    Map<String, int> questionsByDifficulty,
+    List<UserProgress> userProgress,
+    double averageScore,
+    List<Topic> topics,
+  ) async {
+    final pdf = pw.Document();
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'BÁO CÁO THỐNG KÊ HỌC TẬP',
+                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text(
+              'Ngày xuất: ${dateFormat.format(DateTime.now())}',
+              style: pw.TextStyle(fontSize: 10),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'TỔNG QUAN',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Tổng số câu hỏi:', style: const pw.TextStyle(fontSize: 12)),
+                    pw.Text(
+                      totalQuestions.toString(),
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Tổng số đề thi:', style: const pw.TextStyle(fontSize: 12)),
+                    pw.Text(
+                      totalQuizzes.toString(),
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Bài đã làm:', style: const pw.TextStyle(fontSize: 12)),
+                    pw.Text(
+                      totalQuizResults.toString(),
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Điểm TB:', style: const pw.TextStyle(fontSize: 12)),
+                    pw.Text(
+                      '${averageScore.toStringAsFixed(1)}%',
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+            if (questionsByTopic.isNotEmpty) ...[
+              pw.Text(
+                'CÂU HỎI THEO CHỦ ĐỀ',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Chủ đề', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Số lượng', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  ...questionsByTopic.entries.map((e) {
+                    final topicId = int.tryParse(e.key);
+                    final topic = topics.firstWhere(
+                      (t) => t.id == topicId,
+                      orElse: () => Topic(id: -1, name: 'Unknown', description: '', createdAt: DateTime.now()),
+                    );
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(topic.name, style: const pw.TextStyle(fontSize: 10)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(e.value.toString(), style: const pw.TextStyle(fontSize: 10)),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+            ],
+            if (userProgress.isNotEmpty) ...[
+              pw.Text(
+                'TIẾN ĐỘ HỌC TẬP',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(1),
+                  2: const pw.FlexColumnWidth(1),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Chủ đề', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Tổng', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Đúng', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Sai', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4),
+                        child: pw.Text('Điểm TB', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  ...userProgress.map((p) => pw.TableRow(
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(p.topicName, style: const pw.TextStyle(fontSize: 9)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(p.totalQuestions.toString(), style: const pw.TextStyle(fontSize: 9)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(p.correctAnswers.toString(), style: const pw.TextStyle(fontSize: 9)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(p.wrongAnswers.toString(), style: const pw.TextStyle(fontSize: 9)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              '${p.averageScore.toStringAsFixed(1)}%',
+                              style: const pw.TextStyle(fontSize: 9),
+                            ),
                           ),
                         ],
                       )),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'students_screen.dart';
-import 'schedule_screen.dart';
+import 'quiz_screen.dart';
+import 'question_bank_screen.dart';
 import 'statistics_screen.dart';
-import 'audit_log_screen.dart';
+import 'topic_management_screen.dart';
+import 'login_screen.dart';
 import '../services/theme_service.dart';
+import '../services/auth_service.dart';
 import '../services/seed_data_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,14 +19,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final AuthService _authService = AuthService();
 
-  List<Widget> get _screens => [
-    HomePage(themeService: widget.themeService),
-    const StudentsScreen(),
-    const ScheduleScreen(),
-    const StatisticsScreen(),
-    const AuditLogScreen(),
-  ];
+  List<Widget> get _screens {
+    final screens = [
+      HomePage(themeService: widget.themeService),
+      const QuizScreen(),
+      const QuestionBankScreen(),
+      const StatisticsScreen(),
+    ];
+    
+    // Add admin-only screens if user is admin
+    if (_authService.isAdmin) {
+      // Admin can access all screens, no additional screens needed for now
+    }
+    
+    return screens;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,20 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Trang chủ',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Sinh viên',
+            icon: Icon(Icons.quiz),
+            label: 'Đề thi',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
-            label: 'Lịch học',
+            icon: Icon(Icons.help_outline),
+            label: 'Ngân hàng câu hỏi',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart),
             label: 'Thống kê',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Lịch sử',
           ),
         ],
       ),
@@ -74,7 +81,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sổ tay sinh viên & Lịch học'),
+        title: const Text('LMS - Ôn tập trắc nghiệm'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           if (themeService != null)
@@ -87,6 +94,76 @@ class HomePage extends StatelessWidget {
               },
               tooltip: themeService!.isDarkMode ? 'Chế độ sáng' : 'Chế độ tối',
             ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.account_circle),
+            onSelected: (value) async {
+              if (value == 'logout') {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Xác nhận'),
+                    content: const Text('Bạn có chắc muốn đăng xuất?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Hủy'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Đăng xuất'),
+                      ),
+                    ],
+                  ),
+                );
+                
+                if (confirmed == true) {
+                  final authService = AuthService();
+                  await authService.logout();
+                  if (context.mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    );
+                  }
+                }
+              }
+            },
+            itemBuilder: (context) {
+              final authService = AuthService();
+              final user = authService.currentUser;
+              return [
+                PopupMenuItem(
+                  enabled: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user?.name ?? 'User',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        user?.email ?? '',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      if (user?.isAdmin == true)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Chip(
+                            label: const Text('Admin', style: TextStyle(fontSize: 10)),
+                            backgroundColor: Colors.red.shade100,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(value: 'logout', child: Text('Đăng xuất')),
+              ];
+            },
+          ),
         ],
       ),
       body: Center(
@@ -108,7 +185,7 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Sổ tay sinh viên & Lịch học',
+                'LMS - Ôn tập trắc nghiệm',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -117,7 +194,7 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 48),
               const Text(
-                'Quản lý thông tin sinh viên và lịch học một cách dễ dàng',
+                'Hệ thống học tập và ôn tập trắc nghiệm trực tuyến',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16),
               ),
@@ -168,56 +245,84 @@ class HomePage extends StatelessWidget {
                             icon: const Icon(Icons.add_circle_outline),
                             label: const Text('Thêm dữ liệu mẫu'),
                           ),
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            onPressed: () async {
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Xác nhận'),
-                                  content: const Text('Bạn có chắc muốn xóa tất cả dữ liệu và thêm lại dữ liệu mẫu?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, false),
-                                      child: const Text('Hủy'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, true),
-                                      child: const Text('Xác nhận', style: TextStyle(color: Colors.red)),
-                                    ),
-                                  ],
-                                ),
-                              );
+                          if (AuthService().isAdmin) ...[
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Xác nhận'),
+                                    content: const Text('Bạn có chắc muốn xóa tất cả dữ liệu và thêm lại dữ liệu mẫu?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Hủy'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, true),
+                                        child: const Text('Xác nhận', style: TextStyle(color: Colors.red)),
+                                      ),
+                                    ],
+                                  ),
+                                );
 
-                              if (confirmed == true) {
-                                final seedService = SeedDataService();
-                                try {
-                                  await seedService.clearAndReseed();
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Đã reset và thêm lại dữ liệu mẫu!'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Lỗi: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                if (confirmed == true) {
+                                  final seedService = SeedDataService();
+                                  try {
+                                    await seedService.clearAndReseed();
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Đã reset và thêm lại dữ liệu mẫu!'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Lỗi: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
                                   }
                                 }
-                              }
-                            },
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Reset'),
-                          ),
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reset'),
+                            ),
+                          ],
                         ],
                       ),
+                      const SizedBox(height: 16),
+                      // Admin-only: Topic Management
+                      if (AuthService().isAdmin) ...[
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const TopicManagementScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.category),
+                          label: const Text('Quản lý chủ đề'),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '⚠️ Chức năng Admin',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ],
                   ),
                 ),

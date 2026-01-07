@@ -1,348 +1,409 @@
 import '../database/database_helper.dart';
-import '../models/student.dart';
-import '../models/class_schedule.dart';
+import '../models/topic.dart';
+import '../models/question.dart';
+import '../models/quiz.dart';
+import '../services/auth_service.dart';
 
 class SeedDataService {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
   Future<void> seedData() async {
+    // Seed users first
+    await seedUsers();
+
     // Check if data already exists
-    final existingStudents = await _dbHelper.getAllStudents();
-    if (existingStudents.isNotEmpty) {
+    final existingTopics = await _dbHelper.getAllTopics();
+    if (existingTopics.isNotEmpty) {
       return; // Data already exists
     }
 
-    // Seed students
-    final students = _getSampleStudents();
-    for (final student in students) {
-      await _dbHelper.insertStudent(student);
+    // Seed topics first
+    final topics = _getSampleTopics();
+    final topicIds = <int>[];
+    for (final topic in topics) {
+      final id = await _dbHelper.insertTopic(topic);
+      topicIds.add(id);
     }
 
-    // Seed class schedules
-    final schedules = _getSampleSchedules();
-    for (final schedule in schedules) {
-      await _dbHelper.insertClassSchedule(schedule);
+    // Seed questions
+    final questions = _getSampleQuestions(topicIds);
+    for (final question in questions) {
+      await _dbHelper.insertQuestion(question);
+    }
+
+    // Seed quizzes
+    final quizzes = _getSampleQuizzes(topicIds);
+    for (final quiz in quizzes) {
+      await _dbHelper.insertQuiz(quiz);
+    }
+  }
+
+  Future<void> seedUsers() async {
+    final authService = AuthService();
+
+    // Create admin user
+    final adminUser = await _dbHelper.getUserByEmail('admin@gmail.com');
+    if (adminUser == null) {
+      try {
+        await authService.register(
+          'admin@gmail.com',
+          '123456',
+          'Administrator',
+          role: 'admin',
+        );
+      } catch (e) {
+        // User already exists or error
+      }
+    }
+
+    // Create regular user
+    final regularUser = await _dbHelper.getUserByEmail('user@gmail.com');
+    if (regularUser == null) {
+      try {
+        await authService.register(
+          'user@gmail.com',
+          '123456',
+          'Test User',
+          role: 'user',
+        );
+      } catch (e) {
+        // User already exists or error
+      }
     }
   }
 
   Future<void> clearAndReseed() async {
     final db = await _dbHelper.database;
-    await db.delete('students');
-    await db.delete('class_schedules');
+    await db.delete('quiz_results');
+    await db.delete('user_progress');
+    await db.delete('questions');
+    await db.delete('quizzes');
+    await db.delete('topics');
     await db.delete('audit_log');
+    // Don't delete users, just reseed data
     await seedData();
   }
 
-  List<Student> _getSampleStudents() {
+  Future<void> clearAllData() async {
+    final db = await _dbHelper.database;
+    await db.delete('quiz_results');
+    await db.delete('user_progress');
+    await db.delete('questions');
+    await db.delete('quizzes');
+    await db.delete('topics');
+    await db.delete('audit_log');
+    await db.delete('users');
+    await seedData();
+  }
+
+  List<Topic> _getSampleTopics() {
     final now = DateTime.now();
     return [
-      Student(
-        name: 'Nguyễn Văn An',
-        studentId: 'SV2024001',
-        email: 'nguyenvanan@example.com',
-        phone: '0912345678',
-        major: 'Công nghệ thông tin',
-        year: 2024,
+      Topic(
+        name: 'Lập trình cơ bản',
+        description: 'Các khái niệm cơ bản về lập trình',
         createdAt: now.subtract(const Duration(days: 30)),
       ),
-      Student(
-        name: 'Trần Thị Bình',
-        studentId: 'SV2024002',
-        email: 'tranthibinh@example.com',
-        phone: '0923456789',
-        major: 'Công nghệ thông tin',
-        year: 2024,
+      Topic(
+        name: 'Cơ sở dữ liệu',
+        description: 'SQL, Database design, Normalization',
         createdAt: now.subtract(const Duration(days: 28)),
       ),
-      Student(
-        name: 'Lê Văn Cường',
-        studentId: 'SV2024003',
-        email: 'levancuong@example.com',
-        phone: '0934567890',
-        major: 'Kinh tế',
-        year: 2024,
+      Topic(
+        name: 'Lập trình hướng đối tượng',
+        description: 'OOP concepts, Classes, Inheritance, Polymorphism',
         createdAt: now.subtract(const Duration(days: 25)),
       ),
-      Student(
-        name: 'Phạm Thị Dung',
-        studentId: 'SV2024004',
-        email: 'phamthidung@example.com',
-        phone: '0945678901',
-        major: 'Kinh tế',
-        year: 2024,
+      Topic(
+        name: 'Cấu trúc dữ liệu và giải thuật',
+        description: 'Data structures, Algorithms, Complexity',
         createdAt: now.subtract(const Duration(days: 22)),
       ),
-      Student(
-        name: 'Hoàng Văn Đức',
-        studentId: 'SV2023001',
-        email: 'hoangvanduc@example.com',
-        phone: '0956789012',
-        major: 'Công nghệ thông tin',
-        year: 2023,
-        createdAt: now.subtract(const Duration(days: 400)),
-      ),
-      Student(
-        name: 'Vũ Thị Em',
-        studentId: 'SV2023002',
-        email: 'vuthiem@example.com',
-        phone: '0967890123',
-        major: 'Kinh tế',
-        year: 2023,
-        createdAt: now.subtract(const Duration(days: 395)),
-      ),
-      Student(
-        name: 'Đặng Văn Phong',
-        studentId: 'SV2023003',
-        email: 'dangvanphong@example.com',
-        phone: '0978901234',
-        major: 'Điện tử',
-        year: 2023,
-        createdAt: now.subtract(const Duration(days: 390)),
-      ),
-      Student(
-        name: 'Bùi Thị Giang',
-        studentId: 'SV2022001',
-        email: 'buithigiang@example.com',
-        phone: '0989012345',
-        major: 'Công nghệ thông tin',
-        year: 2022,
-        createdAt: now.subtract(const Duration(days: 750)),
-      ),
-      Student(
-        name: 'Ngô Văn Hùng',
-        studentId: 'SV2022002',
-        email: 'ngovanhung@example.com',
-        phone: '0990123456',
-        major: 'Điện tử',
-        year: 2022,
-        createdAt: now.subtract(const Duration(days: 745)),
-      ),
-      Student(
-        name: 'Đỗ Thị Lan',
-        studentId: 'SV2024005',
-        email: 'dothilan@example.com',
-        phone: '0901234567',
-        major: 'Kinh tế',
-        year: 2024,
+      Topic(
+        name: 'Mạng máy tính',
+        description: 'Network protocols, TCP/IP, OSI model',
         createdAt: now.subtract(const Duration(days: 20)),
-      ),
-      Student(
-        name: 'Lý Văn Minh',
-        studentId: 'SV2024006',
-        email: 'lyvanminh@example.com',
-        phone: '0911111111',
-        major: 'Công nghệ thông tin',
-        year: 2024,
-        createdAt: now.subtract(const Duration(days: 15)),
-      ),
-      Student(
-        name: 'Võ Thị Nga',
-        studentId: 'SV2023004',
-        email: 'vothinga@example.com',
-        phone: '0922222222',
-        major: 'Kinh tế',
-        year: 2023,
-        createdAt: now.subtract(const Duration(days: 380)),
-      ),
-      Student(
-        name: 'Phan Văn Quân',
-        studentId: 'SV2022003',
-        email: 'phanvanquan@example.com',
-        phone: '0933333333',
-        major: 'Điện tử',
-        year: 2022,
-        createdAt: now.subtract(const Duration(days: 740)),
-      ),
-      Student(
-        name: 'Trương Thị Hoa',
-        studentId: 'SV2024007',
-        email: 'truongthihoa@example.com',
-        phone: '0944444444',
-        major: 'Công nghệ thông tin',
-        year: 2024,
-        createdAt: now.subtract(const Duration(days: 10)),
-      ),
-      Student(
-        name: 'Lưu Văn Sơn',
-        studentId: 'SV2024008',
-        email: 'luuvanson@example.com',
-        phone: '0955555555',
-        major: 'Công nghệ thông tin',
-        year: 2024,
-        createdAt: now.subtract(const Duration(days: 5)),
       ),
     ];
   }
 
-  List<ClassSchedule> _getSampleSchedules() {
+  List<Question> _getSampleQuestions(List<int> topicIds) {
     final now = DateTime.now();
+    if (topicIds.length < 5) return [];
+
     return [
-      ClassSchedule(
-        className: 'LTHDT-K24',
-        subject: 'Lập trình hướng đối tượng',
-        room: 'A101',
-        teacher: 'Nguyễn Văn Hải',
-        dayOfWeek: 2, // Thứ 3
-        startTime: '08:00',
-        endTime: '10:00',
-        weekPattern: 'All',
+      // Lập trình cơ bản
+      Question(
+        questionText: 'Ngôn ngữ lập trình nào được sử dụng để phát triển ứng dụng Flutter?',
+        options: ['Java', 'Dart', 'Python', 'JavaScript'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[0],
+        explanation: 'Flutter sử dụng ngôn ngữ Dart do Google phát triển.',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 30)),
+      ),
+      Question(
+        questionText: 'Biến nào sau đây là biến toàn cục?',
+        options: ['var', 'final', 'const', 'static'],
+        correctAnswerIndex: 3,
+        topicId: topicIds[0],
+        explanation: 'Từ khóa static được dùng để khai báo biến toàn cục trong class.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 29)),
+      ),
+      // Cơ sở dữ liệu
+      Question(
+        questionText: 'SQL là viết tắt của gì?',
+        options: ['Structured Query Language', 'Simple Query Language', 'Standard Query Language', 'System Query Language'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[1],
+        explanation: 'SQL là Structured Query Language - ngôn ngữ truy vấn có cấu trúc.',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 28)),
+      ),
+      Question(
+        questionText: 'Khóa chính (Primary Key) có thể chứa giá trị NULL không?',
+        options: ['Có', 'Không', 'Tùy thuộc vào DBMS', 'Chỉ trong một số trường hợp'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[1],
+        explanation: 'Primary Key không thể chứa giá trị NULL và phải là duy nhất.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 27)),
+      ),
+      Question(
+        questionText: 'Dạng chuẩn nào loại bỏ sự phụ thuộc bắc cầu?',
+        options: ['1NF', '2NF', '3NF', 'BCNF'],
+        correctAnswerIndex: 2,
+        topicId: topicIds[1],
+        explanation: '3NF (Third Normal Form) loại bỏ sự phụ thuộc bắc cầu.',
+        difficulty: 3,
+        createdAt: now.subtract(const Duration(days: 26)),
+      ),
+      // OOP
+      Question(
+        questionText: 'Tính chất nào cho phép một đối tượng có nhiều hình thái?',
+        options: ['Encapsulation', 'Inheritance', 'Polymorphism', 'Abstraction'],
+        correctAnswerIndex: 2,
+        topicId: topicIds[2],
+        explanation: 'Polymorphism (Đa hình) cho phép một đối tượng có nhiều hình thái khác nhau.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 25)),
+      ),
+      Question(
+        questionText: 'Lớp trừu tượng (Abstract class) có thể được khởi tạo trực tiếp không?',
+        options: ['Có', 'Không', 'Tùy thuộc vào ngôn ngữ', 'Chỉ trong một số trường hợp'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[2],
+        explanation: 'Abstract class không thể được khởi tạo trực tiếp, phải thông qua lớp con.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 24)),
+      ),
+      // Cấu trúc dữ liệu
+      Question(
+        questionText: 'Độ phức tạp thời gian của thuật toán tìm kiếm nhị phân là?',
+        options: ['O(n)', 'O(log n)', 'O(n log n)', 'O(n²)'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[3],
+        explanation: 'Binary search có độ phức tạp O(log n) vì mỗi bước giảm một nửa không gian tìm kiếm.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 22)),
+      ),
+      Question(
+        questionText: 'Cấu trúc dữ liệu nào hoạt động theo nguyên tắc LIFO?',
+        options: ['Queue', 'Stack', 'Tree', 'Graph'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[3],
+        explanation: 'Stack (Ngăn xếp) hoạt động theo nguyên tắc LIFO (Last In First Out).',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 21)),
+      ),
+      // Mạng máy tính
+      Question(
+        questionText: 'Giao thức nào được sử dụng để truyền email?',
+        options: ['HTTP', 'FTP', 'SMTP', 'TCP'],
+        correctAnswerIndex: 2,
+        topicId: topicIds[4],
+        explanation: 'SMTP (Simple Mail Transfer Protocol) được sử dụng để gửi email.',
+        difficulty: 2,
         createdAt: now.subtract(const Duration(days: 20)),
       ),
-      ClassSchedule(
-        className: 'LTHDT-K24',
-        subject: 'Lập trình hướng đối tượng',
-        room: 'A101',
-        teacher: 'Nguyễn Văn Hải',
-        dayOfWeek: 4, // Thứ 5
-        startTime: '08:00',
-        endTime: '10:00',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 20)),
+      Question(
+        questionText: 'Port mặc định của HTTP là?',
+        options: ['80', '443', '21', '25'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[4],
+        explanation: 'Port 80 là port mặc định của HTTP, port 443 là của HTTPS.',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 19)),
       ),
-      ClassSchedule(
-        className: 'CSDL-K24',
-        subject: 'Cơ sở dữ liệu',
-        room: 'B202',
-        teacher: 'Trần Thị Mai',
-        dayOfWeek: 1, // Thứ 2
-        startTime: '13:00',
-        endTime: '15:00',
-        weekPattern: 'All',
+      // Thêm nhiều câu hỏi hơn để test
+      // Lập trình cơ bản - thêm
+      Question(
+        questionText: 'Hàm main() trong Dart có kiểu trả về là gì?',
+        options: ['void', 'int', 'String', 'dynamic'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[0],
+        explanation: 'Hàm main() trong Dart có kiểu trả về void.',
+        difficulty: 1,
         createdAt: now.subtract(const Duration(days: 18)),
       ),
-      ClassSchedule(
-        className: 'CSDL-K24',
-        subject: 'Cơ sở dữ liệu',
-        room: 'B202',
-        teacher: 'Trần Thị Mai',
-        dayOfWeek: 3, // Thứ 4
-        startTime: '13:00',
-        endTime: '15:00',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 18)),
+      Question(
+        questionText: 'Từ khóa nào dùng để khai báo biến không thể thay đổi giá trị?',
+        options: ['var', 'final', 'const', 'static'],
+        correctAnswerIndex: 2,
+        topicId: topicIds[0],
+        explanation: 'const dùng để khai báo biến hằng số, không thể thay đổi giá trị.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 17)),
       ),
-      ClassSchedule(
-        className: 'WEB-K24',
-        subject: 'Lập trình Web',
-        room: 'C301',
-        teacher: 'Lê Văn Tùng',
-        dayOfWeek: 2, // Thứ 3
-        startTime: '10:15',
-        endTime: '12:15',
-        weekPattern: 'All',
+      // Cơ sở dữ liệu - thêm
+      Question(
+        questionText: 'Câu lệnh SQL nào dùng để thêm dữ liệu vào bảng?',
+        options: ['INSERT', 'UPDATE', 'DELETE', 'SELECT'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[1],
+        explanation: 'INSERT dùng để thêm dữ liệu mới vào bảng.',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 16)),
+      ),
+      Question(
+        questionText: 'Khóa ngoại (Foreign Key) dùng để làm gì?',
+        options: ['Đảm bảo tính duy nhất', 'Liên kết giữa các bảng', 'Tăng tốc độ truy vấn', 'Mã hóa dữ liệu'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[1],
+        explanation: 'Foreign Key dùng để liên kết giữa các bảng và đảm bảo tính toàn vẹn dữ liệu.',
+        difficulty: 2,
         createdAt: now.subtract(const Duration(days: 15)),
       ),
-      ClassSchedule(
-        className: 'WEB-K24',
-        subject: 'Lập trình Web',
-        room: 'C301',
-        teacher: 'Lê Văn Tùng',
-        dayOfWeek: 5, // Thứ 6
-        startTime: '10:15',
-        endTime: '12:15',
-        weekPattern: 'All',
+      // OOP - thêm
+      Question(
+        questionText: 'Tính đóng gói (Encapsulation) là gì?',
+        options: ['Ẩn thông tin chi tiết', 'Kế thừa từ lớp cha', 'Có nhiều hình thái', 'Trừu tượng hóa'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[2],
+        explanation: 'Encapsulation là tính đóng gói, ẩn thông tin chi tiết bên trong và chỉ expose những gì cần thiết.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 14)),
+      ),
+      Question(
+        questionText: 'Interface khác với Abstract class như thế nào?',
+        options: ['Interface không có implementation', 'Interface có thể khởi tạo', 'Interface không hỗ trợ đa kế thừa', 'Không có sự khác biệt'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[2],
+        explanation: 'Interface chỉ định nghĩa contract, không có implementation, trong khi Abstract class có thể có implementation.',
+        difficulty: 3,
+        createdAt: now.subtract(const Duration(days: 13)),
+      ),
+      // Cấu trúc dữ liệu - thêm
+      Question(
+        questionText: 'Cấu trúc dữ liệu nào hoạt động theo nguyên tắc FIFO?',
+        options: ['Stack', 'Queue', 'Tree', 'Graph'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[3],
+        explanation: 'Queue (Hàng đợi) hoạt động theo nguyên tắc FIFO (First In First Out).',
+        difficulty: 1,
+        createdAt: now.subtract(const Duration(days: 12)),
+      ),
+      Question(
+        questionText: 'Độ phức tạp thời gian của thuật toán sắp xếp nhanh (Quick Sort) trong trường hợp tốt nhất là?',
+        options: ['O(n)', 'O(n log n)', 'O(n²)', 'O(log n)'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[3],
+        explanation: 'Quick Sort có độ phức tạp O(n log n) trong trường hợp tốt nhất và trung bình.',
+        difficulty: 3,
+        createdAt: now.subtract(const Duration(days: 11)),
+      ),
+      // Mạng máy tính - thêm
+      Question(
+        questionText: 'TCP là viết tắt của gì?',
+        options: ['Transmission Control Protocol', 'Transfer Control Protocol', 'Transport Control Protocol', 'Transmission Communication Protocol'],
+        correctAnswerIndex: 0,
+        topicId: topicIds[4],
+        explanation: 'TCP là Transmission Control Protocol - giao thức điều khiển truyền tải.',
+        difficulty: 2,
+        createdAt: now.subtract(const Duration(days: 10)),
+      ),
+      Question(
+        questionText: 'Lớp nào trong mô hình OSI chịu trách nhiệm định tuyến?',
+        options: ['Lớp 2 (Data Link)', 'Lớp 3 (Network)', 'Lớp 4 (Transport)', 'Lớp 5 (Session)'],
+        correctAnswerIndex: 1,
+        topicId: topicIds[4],
+        explanation: 'Lớp 3 (Network) trong mô hình OSI chịu trách nhiệm định tuyến và địa chỉ hóa logic.',
+        difficulty: 3,
+        createdAt: now.subtract(const Duration(days: 9)),
+      ),
+    ];
+  }
+
+  List<Quiz> _getSampleQuizzes(List<int> topicIds) {
+    final now = DateTime.now();
+    if (topicIds.length < 5) return [];
+
+    return [
+      Quiz(
+        title: 'Kiểm tra nhanh - Lập trình cơ bản',
+        description: 'Bài kiểm tra 10 câu về lập trình cơ bản',
+        timeLimit: 15,
+        questionCount: 10,
+        topicIds: [topicIds[0]],
+        mode: 'random',
+        shuffleQuestions: true,
+        showResultImmediately: false,
         createdAt: now.subtract(const Duration(days: 15)),
       ),
-      ClassSchedule(
-        className: 'KT-K24',
-        subject: 'Kinh tế học',
-        room: 'D401',
-        teacher: 'Phạm Thị Hương',
-        dayOfWeek: 1, // Thứ 2
-        startTime: '08:00',
-        endTime: '10:00',
-        weekPattern: 'All',
+      Quiz(
+        title: 'Thi thử - Cơ sở dữ liệu',
+        description: 'Đề thi 20 câu về SQL và Database',
+        timeLimit: 30,
+        questionCount: 20,
+        topicIds: [topicIds[1]],
+        mode: 'random',
+        shuffleQuestions: true,
+        showResultImmediately: false,
         createdAt: now.subtract(const Duration(days: 12)),
       ),
-      ClassSchedule(
-        className: 'KT-K24',
-        subject: 'Kinh tế học',
-        room: 'D401',
-        teacher: 'Phạm Thị Hương',
-        dayOfWeek: 3, // Thứ 4
-        startTime: '08:00',
-        endTime: '10:00',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 12)),
+      Quiz(
+        title: 'Luyện tập - OOP',
+        description: 'Luyện tập các khái niệm OOP',
+        questionCount: 15,
+        topicIds: [topicIds[2]],
+        mode: 'practice',
+        shuffleQuestions: true,
+        showResultImmediately: true,
+        createdAt: now.subtract(const Duration(days: 10)),
       ),
-      ClassSchedule(
-        className: 'DT-K23',
-        subject: 'Vi mạch số',
-        room: 'E501',
-        teacher: 'Hoàng Văn Nam',
-        dayOfWeek: 2, // Thứ 3
-        startTime: '13:30',
-        endTime: '15:30',
-        weekPattern: 'Odd',
-        createdAt: now.subtract(const Duration(days: 400)),
+      Quiz(
+        title: 'Thi tổng hợp',
+        description: 'Đề thi tổng hợp tất cả các chủ đề',
+        timeLimit: 60,
+        questionCount: 30,
+        topicIds: topicIds,
+        mode: 'random',
+        shuffleQuestions: true,
+        showResultImmediately: false,
+        createdAt: now.subtract(const Duration(days: 5)),
       ),
-      ClassSchedule(
-        className: 'DT-K23',
-        subject: 'Vi mạch số',
-        room: 'E501',
-        teacher: 'Hoàng Văn Nam',
-        dayOfWeek: 4, // Thứ 5
-        startTime: '13:30',
-        endTime: '15:30',
-        weekPattern: 'Odd',
-        createdAt: now.subtract(const Duration(days: 400)),
+      Quiz(
+        title: 'Luyện tập - Cấu trúc dữ liệu',
+        description: 'Luyện tập các khái niệm về cấu trúc dữ liệu và giải thuật',
+        questionCount: 10,
+        topicIds: [topicIds[3]],
+        mode: 'practice',
+        shuffleQuestions: true,
+        showResultImmediately: true,
+        createdAt: now.subtract(const Duration(days: 3)),
       ),
-      ClassSchedule(
-        className: 'CNTT-K23',
-        subject: 'Mạng máy tính',
-        room: 'F601',
-        teacher: 'Vũ Thị Lan',
-        dayOfWeek: 3, // Thứ 4
-        startTime: '15:45',
-        endTime: '17:45',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 395)),
-      ),
-      ClassSchedule(
-        className: 'CNTT-K23',
-        subject: 'Mạng máy tính',
-        room: 'F601',
-        teacher: 'Vũ Thị Lan',
-        dayOfWeek: 5, // Thứ 6
-        startTime: '15:45',
-        endTime: '17:45',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 395)),
-      ),
-      ClassSchedule(
-        className: 'DOAN-K22',
-        subject: 'Đồ án tốt nghiệp',
-        room: 'G701',
-        teacher: 'Đặng Văn Quang',
-        dayOfWeek: 4, // Thứ 5
-        startTime: '08:00',
-        endTime: '11:00',
-        weekPattern: 'Even',
-        createdAt: now.subtract(const Duration(days: 750)),
-      ),
-      ClassSchedule(
-        className: 'KT-K24',
-        subject: 'Quản trị kinh doanh',
-        room: 'H801',
-        teacher: 'Bùi Thị Hoa',
-        dayOfWeek: 1, // Thứ 2
-        startTime: '10:15',
-        endTime: '12:15',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 8)),
-      ),
-      ClassSchedule(
-        className: 'KT-K24',
-        subject: 'Quản trị kinh doanh',
-        room: 'H801',
-        teacher: 'Bùi Thị Hoa',
-        dayOfWeek: 5, // Thứ 6
-        startTime: '10:15',
-        endTime: '12:15',
-        weekPattern: 'All',
-        createdAt: now.subtract(const Duration(days: 8)),
+      Quiz(
+        title: 'Kiểm tra - Mạng máy tính',
+        description: 'Bài kiểm tra về mạng máy tính và các giao thức',
+        timeLimit: 20,
+        questionCount: 15,
+        topicIds: [topicIds[4]],
+        mode: 'random',
+        shuffleQuestions: true,
+        showResultImmediately: false,
+        createdAt: now.subtract(const Duration(days: 1)),
       ),
     ];
   }
 }
-
