@@ -1,0 +1,178 @@
+===============================================
+   HỆ THỐNG QUẢN LÝ ĐIỂM DANH QR CODE
+===============================================
+
+I. TỔNG QUAN DỰ ÁN
+-------------------
+- Tên dự án: Hệ thống Quản lý Điểm danh QR Code
+- Công nghệ: Flutter (đa nền tảng: Android, iOS, Web)
+- Database: Firebase Firestore (Cloud)
+- Mục đích: Số hóa quy trình điểm danh sinh viên trong môi trường giáo dục
+
+II. TÍNH NĂNG CHÍNH
+-------------------
+
+1. QUẢN LÝ NGƯỜI DÙNG
+   ✓ Đăng nhập/Đăng ký với email và mật khẩu
+   ✓ Phân quyền 3 cấp: Admin, Teacher, Student
+   ✓ Quản lý mật khẩu (mã hóa SHA-256)
+   ✓ Quên mật khẩu và khôi phục tài khoản
+
+2. QUẢN LÝ HỌC TẬP
+   ✓ Quản lý sinh viên (CRUD đầy đủ)
+   ✓ Quản lý môn học và lớp học
+   ✓ Quản lý buổi học với trạng thái: Chưa diễn ra / Đã hoàn thành
+   ✓ Đăng ký sinh viên vào môn học
+
+3. ĐIỂM DANH QR CODE
+   ✓ Tạo mã QR động với token bảo mật (60 giây hết hạn)
+   ✓ Mã 4 số thay thế cho QR Code
+   ✓ Quét QR hoặc nhập mã 4 số để điểm danh
+   ✓ Kiểm tra sinh viên đã điểm danh chưa
+   ✓ Chỉ sinh viên đăng ký môn học mới điểm danh được
+   ✓ Điểm danh thủ công bởi giáo viên
+
+4. BÁO CÁO & THỐNG KÊ
+   ✓ Thống kê điểm danh theo thời gian thực
+   ✓ Biểu đồ trực quan với fl_chart
+   ✓ Xuất dữ liệu CSV (hỗ trợ UTF-8 BOM cho Excel)
+   ✓ Xuất dữ liệu PDF (hỗ trợ font tiếng Việt)
+   ✓ Lịch sử xuất dữ liệu
+   ✓ Xuất theo môn học, theo buổi học, hoặc tất cả
+
+5. QUẢN LÝ DỮ LIỆU
+   ✓ Đồng bộ dữ liệu với Firebase (Source.server)
+   ✓ Xóa môn học và buổi học (tự động xóa dữ liệu liên quan)
+   ✓ Quản lý session và QR tokens
+   ✓ Tự động cleanup tokens hết hạn
+
+6. GIAO DIỆN NGƯỜI DÙNG
+   ✓ Dark Mode / Light Mode
+   ✓ Responsive design (Mobile/Tablet/Desktop)
+   ✓ Material Design 3
+   ✓ Tìm kiếm và lọc dữ liệu
+   ✓ Loading states và error handling
+
+III. KIẾN TRÚC HỆ THỐNG
+----------------------
+
+1. CẤU TRÚC THƯ MỤC
+   - lib/main.dart: Entry point, khởi tạo Firebase
+   - lib/models/: Data models (Student, Subject, AttendanceRecord...)
+   - lib/screens/: UI screens (42 màn hình)
+   - lib/services/: Business logic (Export, QR Token, Auth...)
+   - lib/database/: Firebase Firestore operations
+   - lib/providers/: State management (Provider pattern)
+   - lib/utils/: Utilities (Validators, Responsive...)
+   - lib/widgets/: Reusable widgets
+
+2. STATE MANAGEMENT
+   - Provider pattern cho quản lý state toàn cục
+   - AuthProvider: Quản lý đăng nhập/đăng xuất
+   - ThemeProvider: Quản lý theme (Dark/Light)
+
+3. DATABASE
+   - Firebase Firestore (Cloud database)
+   - Collections: users, students, subjects, attendance_sessions, 
+                   attendance_records, qr_tokens, notifications
+   - Offline persistence enabled
+   - Real-time synchronization
+
+IV. CÔNG NGHỆ SỬ DỤNG
+---------------------
+
+1. FRAMEWORK & LANGUAGE
+   - Flutter 3.10+
+   - Dart 3.10+
+
+2. BACKEND & DATABASE
+   - Firebase Core
+   - Cloud Firestore
+   - Firebase Authentication
+
+3. STATE MANAGEMENT
+   - Provider 6.1.1
+
+4. QR CODE
+   - mobile_scanner 4.0.1 (Quét QR)
+   - qr_flutter 4.1.0 (Tạo QR)
+
+5. EXPORT & PRINTING
+   - csv 6.0.0 (Xuất CSV với UTF-8 BOM)
+   - pdf 3.10.7 (Xuất PDF với font tiếng Việt)
+   - printing 5.12.0
+   - share_plus 10.1.2
+
+6. UI & UX
+   - fl_chart 0.66.0 (Biểu đồ)
+   - shimmer 3.0.0 (Loading effect)
+   - cached_network_image 3.3.1
+
+V. ĐIỂM NỔI BẬT
+---------------
+
+1. BẢO MẬT
+   ✓ Token QR Code có thời gian hết hạn (60 giây)
+   ✓ Mã hóa mật khẩu SHA-256
+   ✓ Kiểm tra sinh viên đăng ký môn học trước khi điểm danh
+   ✓ Token sử dụng một lần (isUsed flag)
+
+2. TRẢI NGHIỆM NGƯỜI DÙNG
+   ✓ Giao diện hiện đại, dễ sử dụng
+   ✓ Hỗ trợ Dark Mode
+   ✓ Responsive trên mọi thiết bị
+   ✓ Loading states và error handling rõ ràng
+
+3. HIỆU SUẤT
+   ✓ Đồng bộ dữ liệu từ server (Source.server)
+   ✓ Batch operations cho xóa dữ liệu
+   ✓ Offline persistence với Firestore
+   ✓ Optimized queries
+
+4. CHẤT LƯỢNG CODE
+   ✓ Clean architecture
+   ✓ Separation of concerns (Models, Services, UI)
+   ✓ Reusable components
+   ✓ Error handling đầy đủ
+   ✓ Validators cho forms
+
+VI. LUỒNG HOẠT ĐỘNG
+-------------------
+
+1. ĐĂNG NHẬP
+   User → LoginScreen → AuthProvider → Firebase Auth → HomeScreen
+
+2. ĐIỂM DANH (Sinh viên)
+   Student → QR Scanner → Nhập mã 4 số → Validate token → 
+   Check đã điểm danh → Check đăng ký môn học → Tạo AttendanceRecord
+
+3. TẠO QR CODE (Giáo viên)
+   Teacher → Session Detail → Tạo QR Token → Hiển thị QR Code + Mã 4 số
+
+4. XUẤT BÁO CÁO
+   Teacher/Admin → Export Screen → Chọn loại export (CSV/PDF) → 
+   Chọn dữ liệu → ExportService → Tạo file → Share
+
+VII. KẾT QUẢ ĐẠT ĐƯỢC
+----------------------
+
+✓ Hoàn thành đầy đủ các tính năng cơ bản
+✓ Hỗ trợ 3 vai trò: Admin, Teacher, Student
+✓ Điểm danh QR Code với bảo mật cao
+✓ Xuất báo cáo CSV và PDF đầy đủ
+✓ Giao diện hiện đại, dễ sử dụng
+✓ Code quality tốt, dễ bảo trì
+
+VIII. HƯỚNG PHÁT TRIỂN
+---------------------
+
+- Thêm thông báo push notification
+- Thống kê nâng cao hơn (biểu đồ so sánh)
+- Export nhiều định dạng khác (Excel, JSON)
+- Tích hợp với hệ thống LMS
+- Mobile app native (iOS/Android)
+
+===============================================
+   Cảm ơn đã lắng nghe!
+===============================================
+
