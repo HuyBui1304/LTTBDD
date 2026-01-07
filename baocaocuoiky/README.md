@@ -38,7 +38,7 @@ Hệ thống Quản lý Điểm danh QR Code là một ứng dụng di động �
 
 ### 👥 Quản lý người dùng
 - ✅ Đăng nhập/Đăng ký với xác thực email
-- ✅ Phân quyền 5 cấp độ: Admin, Creator, Approver, Viewer, User
+- ✅ Phân quyền 5 cấp độ: Admin, Viewer, User
 - ✅ Quản lý mật khẩu với mã hóa SHA-256
 - ✅ Quên mật khẩu và khôi phục tài khoản
 
